@@ -3,6 +3,13 @@ import { computed, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { apiClient } from '../api/client'
 
+defineProps({
+  embedded: {
+    type: Boolean,
+    default: false
+  }
+})
+const emit = defineEmits(['close'])
 const router = useRouter()
 const files = ref([])
 const sourceName = ref('')
@@ -251,15 +258,11 @@ function handlePreviewWheel(event) {
 
 <template>
   <main class="mapshaper-shell">
-    <header class="topbar">
-      <button class="plain-btn" type="button" @click="router.push('/')">返回地图</button>
+    <header class="topbar" :class="{ embedded }">
+      <button v-if="!embedded" class="plain-btn" type="button" @click="router.push('/')">返回地图</button>
       <div class="brand">mapshaper</div>
-      <nav class="tabs">
-        <button class="active" type="button">Import</button>
-        <button type="button">Simplify</button>
-        <button type="button">Export</button>
-      </nav>
       <button class="plain-btn" type="button" :disabled="outputFiles.length === 0" @click="downloadOutput">Export</button>
+      <button v-if="embedded" class="plain-btn" type="button" @click="emit('close')">关闭</button>
     </header>
 
     <section class="workspace">
@@ -401,12 +404,16 @@ function handlePreviewWheel(event) {
 
 .topbar {
   display: grid;
-  grid-template-columns: auto auto minmax(0, 1fr) auto;
+  grid-template-columns: auto minmax(0, 1fr) auto;
   align-items: center;
   gap: 12px;
   padding: 0 9px;
   background: #f4f4f4;
   border-bottom: 1px solid #b9bec5;
+}
+
+.topbar.embedded {
+  grid-template-columns: minmax(0, 1fr) auto auto;
 }
 
 .brand {
@@ -415,30 +422,22 @@ function handlePreviewWheel(event) {
   font-weight: 700;
 }
 
-.tabs {
-  display: flex;
-  justify-content: center;
-  gap: 3px;
-}
-
-.plain-btn,
-.tabs button,
-.import-btn {
+.plain-btn {
   height: 27px;
   padding: 0 10px;
-  border: 1px solid #a9afb7;
-  border-radius: 2px;
+  border: 1px solid #c7d6e8;
+  border-radius: 6px;
   background: #fff;
-  color: #222;
+  color: #334966;
   font-weight: 700;
   cursor: pointer;
+  transition: background 0.16s ease, border-color 0.16s ease, color 0.16s ease;
 }
 
-.tabs button.active,
-.import-btn {
-  background: #3d6d9e;
-  border-color: #3d6d9e;
-  color: #fff;
+.plain-btn:hover:not(:disabled) {
+  border-color: #9ec3ef;
+  background: #f3f8ff;
+  color: #0f5fc6;
 }
 
 button:disabled {
@@ -451,13 +450,13 @@ button:disabled {
   display: grid;
   grid-template-columns: 215px minmax(0, 1fr) 258px;
   gap: 1px;
-  background: #b9bec5;
+  background: #d7e2ef;
 }
 
 .side-panel,
 .control-panel,
 .viewport {
-  background: #f7f7f7;
+  background: #f8fbff;
 }
 
 .side-panel,
@@ -483,12 +482,14 @@ h2 {
 
 .layer-item {
   padding: 8px;
-  border: 1px solid #c8cdd3;
+  border: 1px solid #d9e2ee;
+  border-radius: 6px;
   background: #fff;
 }
 
 .layer-item.active {
-  background: #eaf0f6;
+  border-color: #bcd3ef;
+  background: #edf6ff;
 }
 
 .layer-item strong,
@@ -517,14 +518,17 @@ h2 {
   align-items: center;
   gap: 4px;
   padding: 4px;
-  border: 1px solid #b9bec5;
-  background: rgba(244, 244, 244, 0.94);
+  border: 1px solid #c7d6e8;
+  border-radius: 7px;
+  background: rgba(255, 255, 255, 0.94);
+  box-shadow: 0 5px 14px rgba(31, 75, 130, 0.1);
 }
 
 .preview-tools button {
   height: 24px;
   min-width: 28px;
-  border: 1px solid #a9afb7;
+  border: 1px solid #c7d6e8;
+  border-radius: 6px;
   background: #fff;
   cursor: pointer;
 }
@@ -539,10 +543,10 @@ h2 {
   width: 430px;
   margin: auto;
   padding: 24px 18px;
-  border: 2px dashed #999;
-  border-radius: 12px;
-  background: #f7fafc;
-  color: #444;
+  border: 1px dashed #9ec3ef;
+  border-radius: 10px;
+  background: #f7fbff;
+  color: #334966;
   text-align: left;
 }
 
@@ -556,16 +560,17 @@ h2 {
   align-items: center;
   height: 32px;
   padding: 0 6px;
-  border: 1px solid #9aa2ad;
-  border-radius: 4px;
+  border: 1px solid #c7d6e8;
+  border-radius: 6px;
   background: #fff;
-  color: #444;
+  color: #0f5fc6;
   line-height: 1;
   cursor: pointer;
 }
 
 .select-link:hover {
-  background: #eef3f8;
+  border-color: #9ec3ef;
+  background: #eef6ff;
 }
 
 .select-link input {
@@ -631,13 +636,14 @@ h2 {
 
 .field select {
   height: 28px;
-  border: 1px solid #a9afb7;
+  border: 1px solid #c7d6e8;
+  border-radius: 6px;
   background: #fff;
 }
 
 .field input[type="range"],
 .check input {
-  accent-color: #3d6d9e;
+  accent-color: #0f5fc6;
 }
 
 .field b {

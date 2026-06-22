@@ -1,225 +1,350 @@
-# GIS Tools Frontend
+# GIS Tools Online
 
-GIS Tools Frontend 是一个基于 Vue 3、Vite、Mapbox GL JS 的在线 GIS 工具前端。项目提供地图浏览、坐标定位、底图切换、数据资源管理、GeoJSON/Shapefile 图层加载、距离/面积测量、地图截图以及类 mapshaper 的数据简化与导出界面。
+Web 端 GIS 工具集合，面向临时、轻量、无账号体系的空间数据处理场景。系统不做用户体系和云端存储，前端负责地图交互、图层管理、可视化和部分空间分析，后端提供格式转换、数据下载、数据库连接和坐标系查询等计算/服务能力。
 
 ## 功能概览
 
-- 地图浏览：基于 Mapbox GL JS 展示卫星、街道等底图。
-- 坐标搜索：输入经纬度后自动定位并标记到地图。
-- 数据资源：管理 PostGIS 连接、自定义底图、服务器文件夹或浏览器本地文件夹。
-- 图层管理：双击或拖拽资源添加图层，支持显示/隐藏、移除和拖拽调整顺序。
-- 文件加载：支持 `.geojson`、`.json`、`.shp` 等空间数据，Shapefile 可读取同名 `.dbf` 与 `.prj`。
-- 投影转换：读取 GeoJSON CRS 或 Shapefile PRJ 后转换到 `EPSG:4326`。
-- 测量工具：支持距离测量和面积测量。
-- 地图截图：导出当前地图视图为 PNG。
-- Mapshaper：上传 GeoJSON、Shapefile、KML、CSV、GeoPackage、FlatGeobuf、GeoParquet、GeoTIFF 等文件，进行简化预览并导出结果。
+| 模块 | 主要能力 |
+| --- | --- |
+| 数据导入 | 本地 GeoJSON/Shapefile、CSV 坐标/WKT、DXF CAD、PostGIS 数据库图层导入 |
+| 数据处理 | 新建点/线/面图层、要素编辑、节点编辑、坐标转换、China Coord Convert、mapshaper |
+| 分析工具 | 缓冲区、空间连接、图层求交、图层裁剪、图层合并、要素融合、渔网生成、简化可达性分析 |
+| 数据下载 | OSM 多类别下载、高德 POI 下载，支持输出 GeoJSON/Shapefile zip 和结果预览 |
+| 可视化 | 热力图、聚合点、流线图、分级点图、面分级图 |
+| 外链门户 | GIS 在线编辑、数据下载、坐标工具、可视化、遥感平台、工具合集等外链导航 |
+| 图层管理 | 图层顺序、底图切换、图层属性、样式调整、导出、数据库上传 |
 
 ## 技术栈
 
-- Vue 3
-- Vite
-- Vue Router
-- Pinia
-- Mapbox GL JS
-- Turf.js
-- proj4
-- shapefile
-- Axios
+| 层 | 技术 |
+| --- | --- |
+| 前端 | Vue 3、Vite、Pinia、Vue Router、Mapbox GL JS、Turf.js、proj4、shapefile、jszip |
+| 后端 | Node.js、Express、pg、mapshaper、dxf-parser、proj4、shapefile、jszip |
+| 可选数据库 | PostgreSQL + PostGIS |
+| 开发环境 | Windows / PowerShell / Node.js 20.19+ 或 22.12+ |
+
+## 目录结构
+
+```text
+gis-tools-online/
+  gis-tools-frontend/        # Vue/Vite 前端工程
+  gis-tools-backend/         # Express 后端工程
+  docs/                      # PRD/TRD、自测报告等文档
+  tmp/                       # 临时测试输出和截图
+  start-gis-frontend.cmd     # Windows 前端启动脚本
+  start-gis-backend.cmd      # Windows 后端启动脚本
+  start-gis-backend.ps1      # 后端后台启动辅助脚本
+  PROGRESS.md                # 开发进度和验证记录
+```
 
 ## 环境要求
 
-- Node.js `^20.19.0` 或 `>=22.12.0`
-- npm
-- Mapbox Access Token
-- 可选：后端服务，用于 PostGIS、服务器文件目录和 Mapshaper 处理接口
+| 依赖 | 要求 |
+| --- | --- |
+| Node.js | 前端 `package.json` 要求 `^20.19.0 || >=22.12.0` |
+| npm | 随 Node.js 安装 |
+| Chrome | 可选，用于 Chrome DevTools 冒烟测试 |
+| PostgreSQL/PostGIS | 可选；仅数据库导入、数据库上传、PostGIS 表读取等能力需要 |
 
-## 快速开始
+> 基础导入、CSV/CAD 转换、OSM 下载、前端编辑、导出、可视化等功能不强依赖 PostGIS。数据库连接为空时，系统仍可作为本地 GIS 工具使用。
 
-安装依赖：
+## 本地开发启动
 
-```sh
+### 1. 安装依赖
+
+```powershell
+cd D:\study\gis-tools-online\gis-tools-backend
+npm install
+
+cd D:\study\gis-tools-online\gis-tools-frontend
 npm install
 ```
 
-复制环境变量示例：
+### 2. 配置后端环境变量
 
-```sh
-copy .env.example .env
-```
-
-编辑 `.env`，至少填写 Mapbox token：
+后端会读取 `gis-tools-backend/.env`。没有 `.env` 时使用默认值。
 
 ```env
-VITE_MAPBOX_ACCESS_TOKEN=your_mapbox_access_token
+PORT=3000
+NODE_ENV=development
+DB_HOST=localhost
+DB_PORT=5432
+DB_NAME=gis_tools
+DB_USER=postgres
+DB_PASSWORD=postgres
 ```
 
-启动开发服务：
+说明：
 
-```sh
-npm run dev
-```
-
-浏览器打开 Vite 输出的地址，通常是：
-
-```txt
-http://localhost:5173
-```
-
-## 环境变量
-
-| 变量 | 必填 | 说明 |
+| 变量 | 默认值 | 用途 |
 | --- | --- | --- |
-| `VITE_MAPBOX_ACCESS_TOKEN` | 是 | Mapbox GL JS 访问令牌，用于加载地图底图。 |
-| `VITE_API_BASE_URL` | 否 | 后端根地址。留空时请求同源 `/api/*`，开发和预览时由 Vite 代理。 |
-| `VITE_DEV_API_PROXY` | 否 | Vite 开发/预览代理目标，默认 `http://localhost:3000`。 |
+| `PORT` | `3000` | 后端服务端口 |
+| `NODE_ENV` | `development` | 选择数据库配置分组 |
+| `DB_HOST` | `localhost` | PostgreSQL 地址 |
+| `DB_PORT` | `5432` | PostgreSQL 端口 |
+| `DB_NAME` | `gis_tools` | 数据库名 |
+| `DB_USER` | `postgres` | 数据库用户名 |
+| `DB_PASSWORD` | `postgres` | 数据库密码 |
 
-注意：`.env` 已加入 `.gitignore`，不要提交真实 token、数据库密码或其他本地密钥。
+当前仓库后端 `package.json` 中保留了 `npm run init-db` 脚本名，但没有提交对应的 `src/config/initDb.js` 文件；不要依赖该脚本初始化数据库。需要数据库能力时，请手动准备 PostgreSQL/PostGIS 数据库和空间扩展。
 
-## 如何使用
+### 3. 启动后端
 
-### 1. 地图浏览与坐标定位
+方式一：使用根目录脚本。
 
-进入首页后会显示主地图。页面顶部右侧输入经度和纬度，点击“搜索”即可定位到目标坐标。点击地图时，当前点击位置会回填到顶部的经纬度输入框，便于复制或再次搜索。
-
-### 2. 添加底图
-
-左侧“数据资源”面板包含默认底图。双击底图，或将底图拖到图层区域/地图上，即可切换当前底图。也可以添加自定义底图地址，用于接入自己的 Mapbox style、XYZ 瓦片或栅格服务。
-
-### 3. 添加 PostGIS 数据
-
-点击数据库连接区域的添加入口，填写连接名称、主机、端口、数据库、用户名和密码。可以先测试连接，再保存连接。保存后展开连接，会列出可用空间表；双击表或拖拽表到地图，即可加载为 GeoJSON 图层。
-
-这部分依赖后端接口：
-
-- `POST /api/database/test`
-- `POST /api/database`
-- `GET /api/database/:connectionId/tables`
-- `GET /api/database/:connectionId/tables/:schema/:table/geojson`
-
-### 4. 添加本地或服务器文件
-
-可以添加文件夹资源，展开后会显示支持的空间文件。浏览器本地文件夹能力依赖 File System Access API，建议使用 Chrome 或 Edge。服务器文件夹模式需要后端提供文件列表和 GeoJSON 转换接口。
-
-支持的主要格式：
-
-- GeoJSON：`.geojson`、`.json`
-- Shapefile：`.shp`，建议同目录包含 `.dbf` 和 `.prj`
-
-添加方式：
-
-- 双击文件资源。
-- 将文件资源拖到“Map Layers”区域。
-- 将文件资源拖到地图区域。
-
-### 5. 管理图层
-
-添加到地图的资源会出现在左侧“Map Layers”列表中。
-
-- 点击圆点按钮显示或隐藏图层。
-- 点击 `x` 移除图层。
-- 拖拽图层项调整叠放顺序。
-- 底图始终显示，不支持隐藏。
-
-### 6. 测量与截图
-
-地图右上工具区提供测量入口。选择距离测量后，在地图上连续点击生成折线并显示长度；选择面积测量后，点击至少三个点生成面并显示面积。可使用清除按钮重置测量结果。
-
-截图功能会导出当前地图画布为 PNG，文件名包含地图中心点、缩放级别和时间戳。
-
-### 7. 使用 Mapshaper
-
-顶部菜单进入 `mapshaper` 页面，或直接访问：
-
-```txt
-/mapshaper
+```powershell
+.\start-gis-backend.cmd
 ```
 
-使用流程：
+看到以下输出后保持窗口打开：
 
-1. 将文件拖入页面，或点击导入入口选择文件。
-2. 调整 Simplify 百分比和算法。
-3. 选择输出格式，例如 GeoJSON 或 Shapefile。
-4. 查看左右预览和处理日志。
-5. 点击 Export 下载处理结果。
-
-Mapshaper 页面依赖后端接口：
-
-```txt
-POST /api/mapshaper/process-files
+```text
+Server is running on port 3000
+API available at http://localhost:3000/api
 ```
 
-## 常用命令
+方式二：手动启动。
 
-开发：
-
-```sh
-npm run dev
+```powershell
+cd D:\study\gis-tools-online\gis-tools-backend
+npm start
 ```
 
-生产构建：
+健康检查：
 
-```sh
+```powershell
+Invoke-WebRequest -UseBasicParsing http://127.0.0.1:3000/api/health
+```
+
+### 4. 配置前端环境变量
+
+前端可选配置 `gis-tools-frontend/.env.development`：
+
+```env
+VITE_DEV_API_PROXY=http://localhost:3000
+VITE_API_BASE_URL=
+VITE_MAPBOX_ACCESS_TOKEN=
+```
+
+说明：
+
+| 变量 | 默认值 | 用途 |
+| --- | --- | --- |
+| `VITE_DEV_API_PROXY` | `http://localhost:3000` | Vite 开发/预览时 `/api` 代理目标 |
+| `VITE_API_BASE_URL` | 空 | Axios 基础地址；空值表示请求当前域名下的 `/api` |
+| `VITE_MAPBOX_ACCESS_TOKEN` | 空 | Mapbox token；当前底图主要使用栅格瓦片，通常可为空 |
+
+### 5. 启动前端
+
+方式一：使用根目录脚本。
+
+```powershell
+.\start-gis-frontend.cmd
+```
+
+方式二：手动启动。
+
+```powershell
+cd D:\study\gis-tools-online\gis-tools-frontend
+npm run dev -- --host 127.0.0.1
+```
+
+默认访问：
+
+```text
+http://127.0.0.1:5173/
+```
+
+外链门户：
+
+```text
+http://127.0.0.1:5173/portal
+```
+
+## 生产构建
+
+### 1. 构建前端
+
+推荐生产环境使用同域部署：Nginx 托管前端静态文件，并把 `/api` 反代到后端。此时前端构建时 `VITE_API_BASE_URL` 保持空即可。
+
+```powershell
+cd D:\study\gis-tools-online\gis-tools-frontend
 npm run build
 ```
 
-本地预览构建产物：
+构建产物在：
 
-```sh
-npm run preview
+```text
+gis-tools-frontend/dist/
 ```
 
-如果在 Windows PowerShell 中遇到 `npm.ps1` 执行策略限制，可以改用：
+当前构建已知会出现 Vite chunk size warning，主要来自 GIS、导出和空间分析依赖，功能可用。后续可用动态 import 拆包优化。
 
-```sh
-npm.cmd run dev
-npm.cmd run build
+### 2. 启动后端
+
+```powershell
+cd D:\study\gis-tools-online\gis-tools-backend
+npm install --omit=dev
+$env:NODE_ENV='production'
+$env:PORT='3000'
+npm start
 ```
 
-## 项目结构
+生产环境建议使用进程管理器守护后端，例如 Windows 服务、NSSM、PM2 或容器编排。示例 PM2：
 
-```txt
-gis-tools-frontend/
-├─ public/                 静态资源
-├─ src/
-│  ├─ api/                 Axios 客户端
-│  ├─ assets/              全局样式与资源
-│  ├─ components/          头部、地图、资源面板、弹窗等组件
-│  ├─ router/              路由配置
-│  ├─ stores/              Pinia 状态
-│  └─ views/               页面视图
-├─ .env.example            环境变量示例
-├─ vite.config.js          Vite 配置和 /api 代理
-└─ package.json            脚本与依赖
+```powershell
+npm install -g pm2
+cd D:\study\gis-tools-online\gis-tools-backend
+pm2 start src/index.js --name gis-tools-backend
+pm2 save
 ```
 
-## 部署说明
+### 3. Nginx 部署示例
 
-构建生产产物：
+以下示例使用同域名部署前端和 API：
 
-```sh
+```nginx
+server {
+    listen 80;
+    server_name gis-tools.example.com;
+
+    root D:/study/gis-tools-online/gis-tools-frontend/dist;
+    index index.html;
+
+    location / {
+        try_files $uri $uri/ /index.html;
+    }
+
+    location /api/ {
+        proxy_pass http://127.0.0.1:3000/api/;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        client_max_body_size 100m;
+        proxy_read_timeout 120s;
+    }
+}
+```
+
+如果前后端跨域部署，也可以在前端构建时指定后端完整地址：
+
+```powershell
+cd D:\study\gis-tools-online\gis-tools-frontend
+$env:VITE_API_BASE_URL='https://api.example.com'
 npm run build
 ```
 
-构建结果位于 `dist/`。部署到 Nginx、静态托管平台或对象存储时，需要确保：
+跨域部署时后端当前启用了 `cors()`，但生产环境建议收敛允许来源。
 
-- 前端运行环境能读取到正确的 `VITE_MAPBOX_ACCESS_TOKEN`。
-- 如果后端不与前端同源，设置 `VITE_API_BASE_URL` 指向后端根地址。
-- 如果使用 Vue Router history 模式，服务器需要把未知路径回退到 `index.html`。
+## PostGIS 数据库准备
+
+数据库能力包括连接管理、表读取、GeoJSON/Shapefile 上传入库等。准备步骤示例：
+
+```sql
+CREATE DATABASE gis_tools;
+\c gis_tools
+CREATE EXTENSION IF NOT EXISTS postgis;
+```
+
+然后在 `gis-tools-backend/.env` 中配置数据库连接。启动系统后，在左侧资源面板添加 PostGIS 连接。
+
+注意：
+
+- 坐标系搜索接口会优先使用后端内置常用 EPSG 和本地坐标系表，数据库不可用时有 fallback。
+- 上传 Shapefile 时前端需要选择同一组 `.shp/.dbf/.prj` 文件。
+- GBK/UTF-8 编码切换主要用于 CSV、Shapefile DBF 读取与导出。
+
+## 后端 API 概览
+
+| 路径 | 方法 | 用途 |
+| --- | --- | --- |
+| `/api/health` | GET | 健康检查 |
+| `/api/database` | GET/POST/DELETE | 数据库连接列表、新增、删除 |
+| `/api/database/test` | POST | 测试 PostGIS 连接 |
+| `/api/database/:id/upload` | POST | 上传 GeoJSON/Shapefile 到数据库 |
+| `/api/database/:id/tables` | GET | 数据库空间表列表 |
+| `/api/files` | GET | 读取本地目录下支持的矢量文件列表 |
+| `/api/files/geojson` | GET | 读取本地 GeoJSON/Shapefile 并转换为 GeoJSON |
+| `/api/mapshaper/process` | POST | 处理前端传入的 GeoJSON |
+| `/api/mapshaper/process-files` | POST | 处理上传文件组 |
+| `/api/spatial-references` | GET | 搜索坐标系 |
+| `/api/csv/convert` | POST | CSV 转 GeoJSON |
+| `/api/cad/convert` | POST | DXF 转 GeoJSON，并按点/线/面拆层 |
+| `/api/download/osm` | POST | OSM Overpass 下载，返回 zip |
+| `/api/download/amap-poi` | POST | 高德 POI 下载 |
+
+## 验证和自测
+
+### 语法检查
+
+```powershell
+cd D:\study\gis-tools-online\gis-tools-backend
+node --check src/index.js
+node --check src/routes/cad.js
+node --check src/routes/csv.js
+node --check src/routes/download.js
+node --check src/routes/database.js
+node --check src/routes/files.js
+node --check src/routes/mapshaper.js
+node --check src/routes/spatialReferences.js
+
+cd D:\study\gis-tools-online\gis-tools-frontend
+node --check vite.config.js
+node --check src/utils/geoExport.js
+node --check src/utils/portalTools.js
+```
+
+### 前端构建
+
+```powershell
+cd D:\study\gis-tools-online\gis-tools-frontend
+npm run build
+```
+
+### 服务探测
+
+```powershell
+Invoke-WebRequest -UseBasicParsing http://127.0.0.1:5173/
+Invoke-WebRequest -UseBasicParsing http://127.0.0.1:5173/portal
+Invoke-WebRequest -UseBasicParsing http://127.0.0.1:3000/api/health
+Invoke-WebRequest -UseBasicParsing http://127.0.0.1:5173/api/health
+```
+
+完整自测报告见：
+
+```text
+docs/gis-tools-online-self-test-report.md
+```
 
 ## 常见问题
 
-### 地图空白或底图加载失败
+| 问题 | 处理方式 |
+| --- | --- |
+| 前端提示后端服务不可用 | 确认 `start-gis-backend.cmd` 窗口保持打开，且 `http://127.0.0.1:3000/api/health` 返回 `ok` |
+| 3000 端口被占用 | 关闭旧后端进程，或设置后端 `PORT` 并同步修改 `VITE_DEV_API_PROXY` |
+| 访问 `/health` 返回 404 | 正确健康检查路径是 `/api/health` |
+| CSV/Shapefile 中文乱码 | 在导入或导出弹框中切换 `GBK` / `UTF-8` |
+| CAD DWG 转换失败 | 当前后端只支持 DXF；DWG 需要后续接 ODA/LibreDWG 等转换器 |
+| OSM 下载慢或失败 | Overpass 公共服务可能限流或超时；缩小范围到 2000 平方公里以内，稍后重试 |
+| 高德 POI 无法下载 | 需要用户自己的高德 Web 服务 Key；Key 保存在浏览器 localStorage |
+| Shapefile 坐标系缺失 | 选择同名 `.prj`，或在弹框中手动选择源坐标系 |
+| 生产部署刷新 `/portal` 404 | Nginx 需要 `try_files $uri $uri/ /index.html;` 支持 SPA 路由 |
 
-检查 `.env` 中是否填写了有效的 `VITE_MAPBOX_ACCESS_TOKEN`，并确认当前域名在 Mapbox token 限制范围内。
+## 安全和部署注意事项
 
-### PostGIS、服务器文件或 Mapshaper 功能失败
+- 系统不做用户体系，默认所有访问者都能使用前端暴露的功能；部署到公网前建议加反向代理认证、VPN 或内网访问控制。
+- 后端可读取服务器本地文件路径和连接数据库；公网部署时要限制访问来源和运行账号权限。
+- 高德 Key 只保存在浏览器本地，不由本系统后端保存。
+- OSM、地图瓦片、高德 POI 等依赖第三方服务，生产环境需要考虑配额、限流和失败提示。
+- 当前后端 `bodyParser` 限制为 `50mb`，Nginx 示例中 `client_max_body_size` 设置为 `100m`，大文件上传需同步调整前后端和代理限制。
 
-检查后端服务是否已启动，并确认 `VITE_API_BASE_URL` 或 `VITE_DEV_API_PROXY` 指向正确地址。
+## 维护文档
 
-### 本地文件夹无法选择
-
-本地文件夹选择依赖浏览器支持。建议使用最新版 Chrome 或 Edge；不支持该 API 的浏览器可改用服务器文件夹模式。
-
-### Shapefile 坐标位置不正确
-
-确认 `.shp` 同目录下存在匹配的 `.prj` 文件。没有投影信息时，系统会按原始坐标读取，可能导致位置偏移。
+| 文档 | 用途 |
+| --- | --- |
+| `docs/gis-tools-online-prd-trd.md` | 产品/技术需求说明 |
+| `docs/gis-tools-online-requirements-analysis.md` | 早期需求分析 |
+| `docs/gis-tools-online-self-test-report.md` | 全量自测报告 |
+| `PROGRESS.md` | 开发进度、验证记录和风险 |

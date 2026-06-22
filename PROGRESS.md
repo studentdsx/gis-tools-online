@@ -1,0 +1,324 @@
+# GIS Tools Online Progress
+
+更新时间：2026-06-20 11:38
+
+## 当前阶段
+
+长任务推进中：数据处理坐标转换、图层导出增强、分析工具模块实装。
+
+## 已完成
+
+- 根目录新增 `README.md`：
+  - 补充项目简介、功能概览、技术栈和目录结构。
+  - 补充本地开发启动步骤：依赖安装、后端 `.env`、前后端启动脚本、健康检查。
+  - 补充生产部署说明：前端构建、后端启动、PM2 示例、Nginx 同域反代配置、跨域构建配置。
+  - 补充 PostGIS 数据库准备、后端 API 概览、验证命令、常见问题、安全和部署注意事项。
+  - 明确当前仓库存在 `npm run init-db` 脚本名但缺少 `src/config/initDb.js`，避免误用。
+- 数据处理菜单新增 `坐标转换` 二级菜单。
+- 新增通用坐标转换弹框：
+  - 输入支持图层列表或上传 `GeoJSON/Shapefile` 文件组。
+  - 输入坐标系可从图层、GeoJSON `crs`、Shapefile `.prj` 自动解析；解析不到时允许用户选择。
+  - 输出坐标系复用现有坐标系清单。
+  - 输出格式支持 `GeoJSON` 和 `Shapefile (.zip)`。
+  - 输出路径通过浏览器/Windows 保存弹框选择。
+  - 输出文件按目标坐标系保存，地图预览统一转为 `EPSG:4326` 叠加。
+- 图层属性面板导出增强：
+  - 导出按钮改为弹框。
+  - 支持输出坐标系、输出格式 `GeoJSON/Shapefile`、编码 `UTF-8/GBK`、输出路径选择。
+  - 支持导出整个图层或选中要素。
+- 新增通用前端导出工具模块 `src/utils/geoExport.js`：
+  - 统一矢量读取、CRS 转换、GeoJSON 保存、Shapefile zip 生成。
+  - Shapefile 输出包含 `.shp/.shx/.dbf/.prj/.cpg`。
+  - DBF 支持 UTF-8/GBK 编码写出。
+  - 常用 EPSG 的 Shapefile `.prj` 已内置 fallback，坐标系清单含 `srText` 时优先使用清单 WKT。
+- 分析工具菜单按 PRD/TRD 增补并实装弹框：
+  - 缓冲区生成。
+  - 空间连接。
+  - 图层求交。
+  - 图层裁剪。
+  - 图层合并。
+  - 要素融合（含按字段分组融合）。
+  - 渔网生成。
+  - 可达性分析。
+- 分析结果会自动生成新图层并叠加到地图。
+- 坐标转换弹框的输入坐标系、输出坐标系已拆成独立搜索和独立下拉：
+  - 支持按 EPSG、名称、SRID 动态查询数据库坐标系清单。
+  - 搜索框下方直接展示匹配结果，点击结果即可写入输入/输出坐标系。
+  - 已选坐标系会进入前端缓存，避免搜索结果切换后选项丢失。
+  - 转换/导出前会按所选坐标系精确补查并注册 proj4 定义。
+  - 输出格式已显式提供 `GeoJSON` / `Shapefile (.zip)` 选择，格式选项复用统一清单，后续可继续扩展。
+- 所有坐标转换和空间分析弹框已增加“是否显示结果图层”选项：
+  - 默认显示结果并叠加到地图，保持原交互。
+  - 关闭后只执行转换/分析和文件保存，不向地图新增结果图层，减少前端渲染压力。
+  - 完成提示会区分“已叠加到地图”和“未叠加到地图”。
+- 二级菜单工具弹框已增强为窗口式交互：
+  - 标题栏支持拖拽移动。
+  - 支持收起/展开，收起后保留标题栏。
+  - 坐标转换、China Coord Convert、空间分析执行成功后会显示完成提示。
+- mapshaper 工具顶部无实际作用的 `Import / Simplify / Export` 页签按钮已移除，保留真正执行下载的导出按钮。
+- 空间分析工具图层输入已统一支持 `图层列表 / 本地文件` 两种来源：
+  - 空间连接的输入图层、连接图层均可选择当前图层或本地 `GeoJSON/Shapefile`。
+  - 缓冲区、图层求交、图层裁剪、要素融合、可达性分析的输入图层支持本地 `GeoJSON/Shapefile`。
+  - 图层合并支持从图层列表勾选，或一次选择多个本地 `GeoJSON/Shapefile` 文件组。
+  - 渔网生成的范围图层支持本地 `GeoJSON/Shapefile`。
+  - 本地 Shapefile 按同名 `.shp/.dbf/.prj` 自动归组；解析到坐标系时自动转为 `EPSG:4326` 参与前端分析。
+- 空间分析工具已补齐输出文件保存流程：
+  - 弹框内支持选择输出格式 `GeoJSON/Shapefile (.zip)`。
+  - 支持选择输出编码 `UTF-8/GBK`。
+  - 点击“开始分析”后弹出系统保存路径选择。
+  - 保存完成后按“是否显示结果图层”决定是否叠加到地图。
+- 图层合并工具交互与输出增强：
+  - 去掉无关的单个“输入图层”选择，只保留“待合并图层”多选区。
+  - 图层列表模式支持勾选任意多个图层，至少 2 个图层才允许执行。
+  - 本地文件模式支持一次选择多个 `GeoJSON/Shapefile` 文件组，至少 2 个数据集才允许执行。
+  - 支持不同输入坐标系；已有图层和本地文件会先转换为 `EPSG:4326` 参与前端合并。
+  - 支持搜索并选择输出坐标系，输出文件按所选坐标系保存；地图预览继续使用 `EPSG:4326`。
+- 要素融合工具已增加融合字段：
+  - 图层列表模式可从输入图层字段下拉选择。
+  - 本地文件模式可手动输入字段名。
+  - 字段留空时保持原逻辑，全部面要素融合为一组；选择/输入字段后按字段值分组融合。
+- 已移除单独的“按字段融合”菜单入口，相关能力合并到“要素融合”中维护。
+- 渔网生成范围来源已扩展：
+  - 支持图层范围。
+  - 支持手动输入 BBox。
+  - 支持读取当前地图视窗范围。
+  - 支持在地图上拖拽框选范围，框选后自动写入渔网参数。
+- 数据下载模块完成第一版实装：
+  - 新增后端 `/api/download/osm`，通过 Overpass API 按 BBox 和 OSM 标签下载 node/way/relation，并转换为 GeoJSON。
+  - OSM 下载支持当前视窗、手动 BBox、地图框选范围，支持道路、建筑、POI、水系、土地利用、交通设施、行政边界和自定义标签。
+  - 新增后端 `/api/download/amap-poi`，通过高德 Web 服务 POI 接口分页下载 POI，并转换为 GeoJSON 点图层。
+  - 高德 POI Key 保存在浏览器本地 `localStorage`，下次打开默认读取，读取不到时再输入。
+  - 高德 POI 支持城市检索、当前视窗、手动 BBox、地图框选范围；默认输出 WGS84，也可选择保留 GCJ02 GeoJSON。
+  - 下载结果支持输出 `GeoJSON` / `Shapefile (.zip)`、编码 `UTF-8/GBK`、系统保存弹框选择路径、可选是否叠加到地图。
+- 可视化模块完成第一版实装：
+  - 顶部菜单新增 `分级点图`、`面分级图`。
+  - 热力图：选择点图层和权重字段，支持半径、强度、透明度、色带。
+  - 聚合点：选择点图层，使用 Mapbox GL 原生 cluster 渲染数量和未聚合点。
+  - 流线图：选择图层属性中的起终点经纬度字段，生成 LineString 流线，支持权重字段和线宽。
+  - 分级点图：选择点图层和数值字段，按字段值归一化控制点大小和颜色。
+  - 面分级图：选择面图层和数值字段，按字段值归一化进行分级设色。
+  - 可视化图层作为独立 overlay 叠加在地图上，不进入业务图层列表，不影响图层编辑、导入、导出。
+  - 弹框内提供已叠加可视化列表，支持移除可视化 overlay。
+- 外链门户模块完成第一版实装：
+  - 顶部 `外链门户` 已改为一级菜单直接跳转独立网页 `/portal`，不再使用弹框承载。
+  - 新增 `PortalView.vue` 独立门户页，支持按分类和关键词筛选，统一组织所有外链工具。
+  - 外链工具数据抽到 `src/utils/portalTools.js`，便于后续维护和扩展。
+  - 已内置 geojson.io、mapshaper、Overpass Turbo、Geofabrik、BBBike、EPSG.io、GDAL、Turf.js、deck.gl、AntV L7、Mapbox GL JS、高德开放平台等常用入口。
+  - 外链点击通过新窗口打开，不引入用户体系和云端存储。
+- 外链门户完成 GIS 相关链接扩展：
+  - 已整合 DipperMap 外链导航中 GIS 相关分组：坐标处理与文件转换、常用数据源、GIS 软件工具、在线地图、遥感平台、数据编辑与可视化、系列合集。
+  - 新增在线编辑、坐标工具、格式转换、数据资源、在线地图、GIS 软件、遥感平台、工具合集等分类条目，总工具入口扩展到 71 个。
+  - 已补充 Placemark Play、Vector | GeoJSON Editor、Geoman GeoJSON Demo 等知乎文章搜索索引中可确认的 GIS 在线编辑入口。
+  - 知乎原文 `https://zhuanlan.zhihu.com/p/692075500` 当前直接抓取返回 403 安全验证页，未能完整抽取正文清单；本轮只加入可通过公开检索确认 URL 的条目，避免录入不可确认链接。
+- 数据资源分类新增 `省市县数据 CTAmap`：`https://www.shengshixian.com/`，用于中国行政区划矢量数据下载入口；外链总数更新为 72 个。
+- 外链门户页面交互精简：
+  - 移除门户页内部蓝色头部、`GIS工具集合` 切换按钮和 `返回工作台` 按钮。
+  - 页面进入 `/portal` 后直接展示分类侧栏、搜索栏和工具列表内容区。
+- 顶部菜单布局调整为全局 layout：
+  - `Header` 已上移到 `App.vue`，工作台、外链门户等路由只切换头部下方内容区。
+  - `MainView` 移除内部 `Header`，避免外链门户/工作台路由切换时头部重复或消失。
+  - 全局 `Header` 的二级菜单工具动作、坐标搜索通过 Pinia 状态传递给工作台；从外链门户点击其它工具会先回到工作台再弹出对应工具窗口。
+  - 地图点击坐标继续回填到全局头部的经纬度输入框。
+  - 移除占位页内部 `Header`，防止后续占位路由出现双头部。
+- 修复全局头部上移后所有二级菜单点击无响应的问题：
+  - 放弃 `Header -> Pinia -> MainView watch` 的间接事件链，改为 `Header emit -> App.vue -> MainView defineExpose` 的直接转发。
+  - `App.vue` 在收到二级菜单动作时先确保路由回到工作台，再调用当前工作台实例的 `handleToolAction`。
+  - 坐标搜索同样通过 `App.vue` 转发给工作台实例的 `handleSearch`。
+  - 地图点击坐标通过 `MainView emit -> App.vue -> Header exposed method` 回填到顶部输入框。
+- 排查 OSM 数据下载框选后 404：
+  - 复现 `http://127.0.0.1:3000/api/download/osm` 返回 404，确认不是框选 BBox 参数问题。
+  - 根因是 3000 端口运行的是 2026-06-18 启动的旧后端进程，未加载当前代码中的 `/api/download/osm` 路由。
+  - `start-gis-backend.cmd` 已增加启动前清理 3000 旧监听进程逻辑，避免后端继续跑旧代码。
+  - 数据下载错误提示增强：接口返回 404 时明确提示后端接口未找到、需要重启后端加载最新路由。
+- 继续排查 OSM 数据下载框选后 500：
+  - 当前 500 由 Vite `/api` 代理无法连接 `http://localhost:3000` 触发；本机 `3000` 未监听，`/api/health` 无法连接。
+  - 框选 BBox 输出顺序已核对，为 `minLon,minLat,maxLon,maxLat`，不是框选参数顺序问题。
+  - `runDownloadTool` 执行下载前增加 `/api/health` 健康检查，后端不可用时直接提示服务未启动/未连接。
+  - `vite.config.js` 的 dev/preview `/api` 代理增加 `error` 处理，后端不可达时返回 `503` JSON，而不是空 `500`。
+  - `start-gis-backend.cmd` 增加启动日志、旧进程清理日志和退出码日志，便于定位后端启动失败。
+- 后端启动脚本修正：
+  - 在当前 Windows 环境中，后台 `Start-Process`/`start /B` 模式启动后端会被回收或无法稳定监听 `3000`。
+  - `start-gis-backend.cmd` 改为最稳的前台常驻模式：直接执行 `node src/index.js`，窗口保持打开时后端持续运行。
+  - 使用方式：双击 `start-gis-backend.cmd`，看到 `Server is running on port 3000` 后保持窗口打开，再使用前端功能。
+- OSM 下载链路已恢复：
+  - 已通过可见持久 `cmd` 窗口启动后端，当前 `http://127.0.0.1:3000/api/health` 返回 `200`。
+  - 直接请求 `http://127.0.0.1:3000/api/download/osm` 返回 `200`，测试范围 `[116.39,39.90,116.40,39.91]` 成功返回 GeoJSON。
+  - 前端代理 `http://127.0.0.1:5173/api/download/osm` 返回 `200`，确认前端到后端链路可用。
+  - Overpass 官方节点曾返回 `406 Not Acceptable` HTML；后端已增加 `accept`、`user-agent` 请求头和多个 Overpass 备用节点兜底。
+- 修复浏览器保存文件手势限制：
+  - `showSaveFilePicker` 必须在用户点击事件同步链路中调用；此前 OSM/高德下载是在接口返回后再弹保存框，导致 `Must be handling a user gesture`。
+  - 数据下载流程已调整为点击“下载数据”后先弹出保存路径选择，再执行后端下载接口，最后写入用户选择的文件句柄。
+  - `geoExport.js` 新增保存句柄预取、Blob 生成和句柄写入能力，保留普通浏览器下载降级。
+  - 下载工具导出 `GeoJSON/Shapefile` 均复用提前选择的保存句柄。
+- OSM 多类别下载改造：
+  - 后端 `/api/download/osm` 按用户勾选的 OSM 类别分别查询 Overpass，并返回 `layers` 数组。
+  - 每个类别对应一个结果图层；例如同时勾选道路、建筑、POI 时，前端会分别新增 `OSM 数据下载_道路`、`OSM 数据下载_建筑`、`OSM 数据下载_POI`。
+  - 自定义 OSM 标签作为 `自定义` 类别单独生成图层。
+  - OSM 下载文件统一保存为 `.zip`：输出 GeoJSON 时 zip 内每类一个 `.geojson`；输出 Shapefile 时 zip 内每类一个 Shapefile 文件夹。
+  - 前端 OSM 要素区域文案已更新为“每个类别生成一个图层，下载结果统一打包为 .zip”。
+- 修复 OSM 类别图层几何类型：
+  - 道路类别只查询/保留 `way/relation` 线要素，避免红绿灯、路口等 `node` 点混入道路图层。
+  - 建筑、土地利用、行政边界类别只查询/保留面要素。
+  - POI 类别只查询/保留 `node` 点要素。
+  - 水系、交通设施按线要素处理；自定义标签保持混合几何。
+- 修复 OSM 多类别结果只明显显示道路的问题：
+  - 下载结果叠加地图时按面、线、点顺序加入业务图层，最终资源列表和 Mapbox 实际层级保持点在线上、线在面上、底图在最下方。
+  - OSM 分类图层增加默认样式：建筑使用半透明填充和深色边线，道路使用加粗蓝色线，POI 使用更大点符号和白色描边。
+  - 批量叠加 OSM 分类图层时不再逐个 `fitBounds`，改为全部加入后按总范围统一缩放，避免视图被最后一个图层带偏。
+  - `ResourcePanel.addExternalLayer` 支持调用方传入 `style` 和 `fitOnAdd`，便于下载、分析等模块控制默认显示效果和视图行为。
+- 修复图层已加入列表但地图不显示的问题：
+  - 根因定位到 `MapView` 使用 `map.isStyleLoaded()` 作为业务图层加层门槛，栅格底图瓦片仍在加载时会返回 false，导致业务图层挂到后续 `style.load`，但当前 style 并不会再次触发该事件。
+  - 改为以地图初始 `load` 完成为业务图层、可视化图层、选中高亮图层的加层条件，避免受底图瓦片加载状态影响。
+  - 新增 `whenMapReady` 统一等待逻辑，未 ready 时监听 `load/style.load/styledata/idle` 后重试加层。
+  - `addMapboxDataLayer` 增加 source 创建/更新失败日志，`addOverlayMapLayer` 增加明确失败日志，避免异常被静默吞掉。
+  - `MapView` 暴露 `getLayerRenderDiagnostics` 诊断方法，可检查业务图层的 source、子图层、可渲染要素计数状态，便于后续定位同类问题。
+- OSM 下载限制和预览链路调整：
+  - 取消 OSM 下载的最大要素数限制，完整下载结果不再按要素数截断。
+  - 新增下载范围限制：按 BBox 近似面积限制最大约 `2000` 平方公里，前后端均做校验。
+  - 后端 `/api/download/osm` 改为直接返回 `.zip` 文件，不再把完整要素作为 JSON 回传给前端。
+  - OSM zip 内包含 `_metadata.json`、`_preview.json`，以及完整分类数据文件。
+  - 输出 `GeoJSON` 时 zip 内每类一个 `.geojson`；输出 `Shapefile` 时 zip 内每类一个 Shapefile `.zip`。
+  - 前端只解析 zip 内 `_preview.json` 并叠加预览图层，完整数据只写入用户选择的保存文件。
+  - OSM 弹框将“最大要素数”改为“每类最大预览要素数”，只控制地图预览显示，不影响下载文件完整性。
+  - 后端新增 `jszip` 依赖用于服务端打包 OSM 下载结果。
+- 下载工具手动框选交互优化：
+  - 用户在下载弹框选择“框选范围”后，自动收起弹框并进入地图框选状态。
+  - 框选完成后将 BBox 写回“框选范围”输入框，并提示框选面积，用户确认后再点击“开始下载”。
+  - “开始框选”按钮在已有 BBox 时显示为“重新框选”，点击后清空旧 BBox 并重新进入框选。
+  - 框选中按钮显示“正在框选”，避免重复触发多个框选任务。
+
+## 验证记录
+
+- 2026-06-20 完成一轮全量功能自测并输出报告：`docs/gis-tools-online-self-test-report.md`。
+- 全量自测执行 `gis-tools-backend` 后端语法检查通过：
+  - `node --check src/index.js`
+  - `node --check src/routes/cad.js`
+  - `node --check src/routes/csv.js`
+  - `node --check src/routes/download.js`
+  - `node --check src/routes/database.js`
+  - `node --check src/routes/files.js`
+  - `node --check src/routes/mapshaper.js`
+  - `node --check src/routes/spatialReferences.js`
+- 全量自测执行 `gis-tools-frontend` 前端语法/构建检查通过：
+  - `node --check vite.config.js`
+  - `node --check src/utils/geoExport.js`
+  - `node --check src/utils/portalTools.js`
+  - `npm.cmd run build` 通过；仍有 Vite chunk size warning。
+- 全量自测服务探测通过：
+  - `http://127.0.0.1:5173/` 返回 `200`。
+  - `http://127.0.0.1:5173/portal` 返回 `200`。
+  - `http://127.0.0.1:5173/mapshaper` 返回 `200`。
+  - `http://127.0.0.1:3000/api/health` 返回 `{"status":"ok"}`。
+  - `http://127.0.0.1:5173/api/health` 经 Vite 代理返回 `{"status":"ok"}`。
+- 全量自测后端 API 脚本 15 项通过：
+  - 后端健康检查。
+  - 坐标系查询 `EPSG:4326`。
+  - 数据库连接列表。
+  - 数据库连接测试必填校验。
+  - CSV XY 转换。
+  - CSV WKT 转换。
+  - CSV 无效几何校验。
+  - CAD DXF 转换和按几何类型拆层。
+  - CAD DWG 不支持校验。
+  - mapshaper GeoJSON 处理。
+  - 文件列表缺路径校验。
+  - 非 GeoJSON 文件读取校验。
+  - OSM 超范围校验。
+  - OSM 小范围 zip 下载，zip 内含 `_metadata.json`、`_preview.json` 和 `POI.geojson`。
+  - 高德 POI 缺 Key 校验。
+- 全量自测前端工具函数脚本 7 项通过：
+  - CRS 标准化和 WGS84 识别。
+  - `EPSG:4326 -> EPSG:3857` GeoJSON 坐标转换。
+  - GBK DBF ArrayBuffer 生成。
+  - Shapefile zip 生成，包含 `.shp/.shx/.dbf/.prj/.cpg`。
+  - 多图层 GeoJSON zip 生成。
+  - 输出文件名和保存弹框类型生成。
+  - 外链门户数据质量检查，72 个工具、12 个分类、URL 无重复。
+- 全量自测菜单覆盖脚本通过：`Header.vue` 23 个二级菜单动作在 `MainView.vue` 中均有定义或特例处理；`database-import` 作为特例直接打开数据库连接弹框。
+- 当前项目未安装 `playwright`，但已使用 Chrome DevTools Protocol 补做真实浏览器冒烟测试：
+  - 使用可见 Chrome `149.0.7827.103` 和 CDP Protocol `1.3`。
+  - 工作台首页 `/` 加载通过，全局头部和一级菜单显示正常。
+  - 点击“数据导入 > CSV 导入”通过，弹框包含编码和预览信息。
+  - 点击“数据导入 > CAD 导入”通过，弹框包含坐标系信息。
+  - 点击“数据处理 > 坐标转换”通过，弹框包含输入/输出配置。
+  - 点击“分析工具 > 空间连接”通过，弹框包含输入图层/连接图层配置。
+  - 点击“数据下载 > OSM 数据下载”通过，弹框包含框选/BBox 范围配置。
+  - 点击“可视化 > 热力图”通过，弹框包含图层/权重配置。
+  - 点击“外链门户”进入 `/portal` 通过，全局头部保留，无“返回工作台”按钮。
+  - 外链门户搜索 `deck` 通过，页面展示 `deck.gl`。
+  - 控制台未采集到 `uncaught`、`ReferenceError`、`TypeError` 等阻断错误。
+  - 截图证据保存到 `tmp/chrome-devtools-selftest-portal.png`。
+- 地图拖拽、框选、编辑节点、文件保存弹框、可视化渲染像素级检查等深度 E2E 项仍记录到测试报告的人工验收清单。
+- `gis-tools-frontend` 执行 `npm.cmd run build` 通过。
+- 本轮交互增强后再次执行 `npm.cmd run build` 通过。
+- mapshaper 页签按钮移除后再次执行 `npm.cmd run build` 通过。
+- 空间分析本地文件输入改造后再次执行 `npm.cmd run build` 通过。
+- 空间分析输出路径/格式/编码补齐后再次执行 `npm.cmd run build` 通过。
+- 图层合并多图层选择和输出坐标系改造后执行 `npm.cmd run build` 通过；首次构建出现一次 Vite/Rollup Windows 绝对路径 emit 偶发错误，重试通过。
+- 要素融合增加融合字段后执行 `npm.cmd run build` 通过。
+- 渔网生成增加当前视窗范围和地图框选范围后执行 `npm.cmd run build` 通过。
+- 合并“要素融合/按字段融合”入口后执行 `npm.cmd run build` 通过。
+- 数据下载、可视化、外链门户第一版完成后执行 `npm.cmd run build` 通过；仍有 bundle 大小提示。
+- 外链门户改为一级菜单单页面后再次执行 `npm.cmd run build` 通过；仍有 bundle 大小提示。
+- 外链门户由弹框改为独立 `/portal` 页面后再次执行 `npm.cmd run build` 通过；仍有 bundle 大小提示。
+- 外链门户链接扩展后执行 `node --check src/utils/portalTools.js` 通过；URL 去重检查通过。
+- 外链门户链接扩展后执行 `gis-tools-frontend` 的 `npm.cmd run build` 通过；仍有 bundle 大小提示。
+- 新增 `省市县数据 CTAmap` 后执行 `node --check src/utils/portalTools.js` 通过；URL 去重检查通过。
+- 外链门户移除内部头部后执行 `gis-tools-frontend` 的 `npm.cmd run build` 通过；仍有 bundle 大小提示。
+- 顶部菜单上移为全局 layout 后执行 `gis-tools-frontend` 的 `npm.cmd run build` 通过；仍有 bundle 大小提示。
+- 已探测现有前端服务 `/portal` 返回 `200`，确认路由可访问。
+- 二级菜单无响应修复后执行 `gis-tools-frontend` 的 `npm.cmd run build` 通过；仍有 bundle 大小提示。
+- OSM 下载 404 排查后执行 `gis-tools-backend` 的 `node --check src/routes/download.js`、`node --check src/index.js` 通过。
+- OSM 下载 404 提示增强后执行 `gis-tools-frontend` 的 `npm.cmd run build` 通过；仍有 bundle 大小提示。
+- OSM 下载 500 提示增强后执行 `gis-tools-frontend` 的 `node --check vite.config.js`、`npm.cmd run build` 通过；仍有 bundle 大小提示。
+- OSM 下载 500 排查后再次执行 `gis-tools-backend` 的 `node --check src/routes/download.js`、`node --check src/index.js` 通过。
+- 后端启动脚本改为前台常驻模式后再次执行 `node --check src/index.js`、`node --check src/routes/download.js`、`node --check vite.config.js` 通过。
+- OSM 下载链路恢复后再次执行 `node --check src/routes/download.js`、`node --check vite.config.js` 通过。
+- 保存文件手势限制修复后执行 `gis-tools-frontend` 的 `node --check src/utils/geoExport.js`、`npm.cmd run build` 通过；仍有 bundle 大小提示。
+- 保存文件手势限制修复后确认后端 `/api/health` 返回 `200`，并执行 `gis-tools-backend` 的 `node --check src/routes/download.js` 通过。
+- OSM 多类别下载改造后执行 `gis-tools-backend` 的 `node --check src/routes/download.js` 通过。
+- OSM 多类别下载接口验证通过：测试范围 `[116.39,39.90,116.40,39.91]` 勾选道路、建筑、POI 时返回 `layers 道路:5|建筑:5|POI:5`。
+- OSM 多类别下载改造后执行 `gis-tools-frontend` 的 `node --check src/utils/geoExport.js`、`npm.cmd run build` 通过；仍有 bundle 大小提示。
+- OSM 类别几何类型修复后接口验证通过：测试范围 `[116.39,39.90,116.40,39.91]` 勾选道路、建筑、POI 时返回 `道路 LineString`、`建筑 Polygon`、`POI Point`。
+- OSM 类别几何类型修复后执行 `gis-tools-backend` 的 `node --check src/routes/download.js`、`gis-tools-frontend` 的 `npm.cmd run build` 通过；仍有 bundle 大小提示。
+- OSM 多类别前端叠加显示修复后执行 `gis-tools-frontend` 的 `node --check src/utils/geoExport.js`、`npm.cmd run build` 通过；首次构建再次出现一次已知 Vite/Rollup Windows 绝对路径 emit 偶发错误，重试通过，仍有 bundle 大小提示。
+- 图层列表有数据但地图不显示修复后执行 `gis-tools-frontend` 的 `node --check src/utils/geoExport.js`、`node --check vite.config.js`、`npm.cmd run build` 通过；仍有 bundle 大小提示。
+- OSM 下载限制和预览链路调整后执行：
+  - `gis-tools-backend` 的 `node --check src/routes/download.js`、`node --check src/index.js` 通过。
+  - `gis-tools-frontend` 的 `npm.cmd run build` 通过；仍有 bundle 大小提示。
+  - 临时端口 `3027` 验证 GeoJSON zip 输出通过：zip 内含 `_metadata.json`、`_preview.json`、`道路.geojson`、`建筑.geojson`、`POI.geojson`，预览按每类上限截断。
+  - 临时端口 `3028` 验证 Shapefile zip 输出通过：zip 内含 `_metadata.json`、`_preview.json`、`道路.zip`、`建筑.zip`。
+- 下载工具手动框选交互优化后执行 `gis-tools-frontend` 的 `npm.cmd run build` 通过；仍有 bundle 大小提示。
+- 修复下载工具/渔网生成地图框选时收起弹框消失的问题：
+  - 进入地图框选状态时，工具弹框改为停靠在地图顶部的收起窗口，保留标题栏和展开/关闭按钮。
+  - 框选期间弹框遮罩改为透明且可穿透，不再阻挡地图拖拽框选。
+  - 进入框选前会清理旧的弹框拖拽位置，避免收起窗口沿用历史位置跑出视野。
+  - 关闭弹框时会同步取消地图框选状态，避免地图残留十字光标或未结束的框选监听。
+- 完成一轮整体 UI 视觉优化：
+  - 引入统一蓝色简约视觉变量，调整全局字体、滚动条、焦点态和基础背景。
+  - 顶部菜单栏增强层次、hover/active 状态、下拉菜单阴影和搜索按钮反馈。
+  - 二级菜单工具弹框统一为蓝白灰窗口风格，增强标题栏、遮罩、表单控件、分段按钮、底部操作按钮、文件选择区和提示条样式。
+  - 图层资源面板、图层属性面板、导出/上传弹框统一蓝色简约风，减少原有偏绿色样式割裂。
+  - 外链门户卡片和 mapshaper 嵌入界面做轻量统一，保留各自业务布局。
+- 后端新增下载路由执行 `node --check src/routes/download.js` 通过。
+- 后端使用临时端口 `PORT=3019` 启动检查通过；默认 3000 端口已被现有服务占用。
+- 前端首页 `http://127.0.0.1:5173/` 返回 `200`。
+- 坐标系列表代理接口 `http://127.0.0.1:5173/api/spatial-references?limit=3` 返回正常。
+- 地图框选收起弹框修复后执行 `gis-tools-frontend` 的 `npm.cmd run build` 通过；仍有 bundle 大小提示。
+- 整体 UI 视觉优化后执行 `gis-tools-frontend` 的 `npm.cmd run build` 通过；仍有 bundle 大小提示。
+- 整体 UI 视觉优化后确认前端首页 `http://127.0.0.1:5173/` 返回 `200`，后端健康检查 `http://127.0.0.1:3000/api/health` 返回 `200`。
+- Node 脚本验证：
+  - `EPSG:4326 -> EPSG:3857` 坐标转换成功。
+  - GBK DBF buffer 生成成功。
+  - Shapefile zip 生成成功。
+
+## 待继续/风险
+
+- 可达性分析当前按 PRD 决策先做简化版：距离阈值或时间阈值换算距离后生成缓冲区；未做完整路网引擎。
+- Turf 对复杂面叠加、融合可能失败，当前策略是跳过失败几何对或保留可生成结果；后续复杂场景建议接 Mapshaper/PostGIS 后端处理。
+- `npm.cmd run build` 仍提示 bundle 较大，主要来自 GIS/导出依赖；不影响功能，后续可用动态 import 拆包。
+- 后端没有 `/health` 路由，直接访问 `http://127.0.0.1:3000/health` 返回 404；现有 API 代理可用。
+- OSM 下载依赖 Overpass 公共服务，受远端限流、超时和查询范围影响；当前已限制查询范围并提供要素数上限，后续可增加备用 Overpass 端点配置。
+- 高德 POI 下载依赖用户自己的高德 Web 服务 Key 和高德配额；Key 仅保存在浏览器本地，不上传到本系统存储。
+- GCJ02 不是标准 EPSG 坐标系，当前禁止 `GCJ02 + Shapefile` 组合导出，建议输出 WGS84 Shapefile 或 GCJ02 GeoJSON。
+- 可视化第一版按稳定性优先使用 Mapbox GL 原生图层实现；deck.gl / L7 官方文档已加入外链门户，后续如需要更强 WebGL 效果可按具体图层逐步引入。

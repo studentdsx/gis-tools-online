@@ -1,0 +1,76 @@
+:root {
+  --gis-blue-900: #073b78;
+  --gis-blue-800: #0b4ea2;
+  --gis-blue-700: #0f5fc6;
+  --gis-blue-600: #1777e6;
+  --gis-blue-100: #e7f1ff;
+  --gis-blue-050: #f4f9ff;
+  --gis-ink-900: #152238;
+  --gis-ink-700: #334966;
+  --gis-ink-500: #60738c;
+  --gis-line: #cfdbeb;
+  --gis-line-soft: #e6eef7;
+  --gis-surface: #ffffff;
+  --gis-surface-soft: #f7fbff;
+  --gis-radius: 7px;
+  --gis-shadow-sm: 0 3px 10px rgba(15, 61, 108, 0.08);
+  --gis-shadow-md: 0 14px 38px rgba(15, 61, 108, 0.18);
+  --gis-shadow-lg: 0 24px 70px rgba(10, 37, 76, 0.24);
+}
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+html, body {
+  width: 100%;
+  height: 100%;
+  font-family: "Microsoft YaHei UI", "Segoe UI", -apple-system, BlinkMacSystemFont, sans-serif;
+  font-size: 14px;
+  line-height: 1.5;
+  color: var(--gis-ink-900);
+  background: #eaf1f8;
+}
+
+#app {
+  width: 100%;
+  height: 100%;
+}
+
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: #eef4fb;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #b7c8dd;
+  border: 2px solid #eef4fb;
+  border-radius: 999px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #8faac9;
+}
+
+button {
+  font-family: inherit;
+  letter-spacing: 0;
+}
+
+input, select, textarea {
+  font-family: inherit;
+}
+
+button:focus-visible,
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible {
+  outline: 2px solid rgba(23, 119, 230, 0.32);
+  outline-offset: 2px;
+}
