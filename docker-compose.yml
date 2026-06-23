@@ -1,0 +1,54 @@
+name: gis-tools-online
+
+services:
+  postgis:
+    image: ${POSTGIS_IMAGE:-postgis/postgis:16-3.4}
+    container_name: gis-tools-postgis
+    restart: unless-stopped
+    env_file:
+      - ./config/postgis.env
+    ports:
+      - "${POSTGRES_BIND:-127.0.0.1}:${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - postgis-data:/var/lib/postgresql/data
+      - /etc/localtime:/etc/localtime:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U \"$${POSTGRES_USER}\" -d \"$${POSTGRES_DB}\""]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  backend:
+    image: ${BACKEND_IMAGE:-gis-tools-backend}:${GIS_TOOLS_IMAGE_TAG:-latest}
+    container_name: gis-tools-backend
+    restart: unless-stopped
+    env_file:
+      - ./config/backend.env
+    ports:
+      - "${BACKEND_BIND:-127.0.0.1}:${BACKEND_PORT:-3000}:3000"
+    volumes:
+      - ./docker-data:/data
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3000/api/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+
+  frontend:
+    image: ${FRONTEND_IMAGE:-gis-tools-frontend}:${GIS_TOOLS_IMAGE_TAG:-latest}
+    container_name: gis-tools-frontend
+    restart: unless-stopped
+    ports:
+      - "${FRONTEND_BIND:-0.0.0.0}:${FRONTEND_PORT:-8080}:80"
+    volumes:
+      - ./config/nginx.conf:/etc/nginx/conf.d/default.conf:ro
+      - ./config/frontend.env:/etc/gis-tools/frontend.env:ro
+    environment:
+      GIS_FRONTEND_ENV_FILE: /etc/gis-tools/frontend.env
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
+volumes:
+  postgis-data:

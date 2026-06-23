@@ -108,6 +108,8 @@ const attributePageSize = 8
 const selectedFeatureIndex = ref(null)
 const folderHandles = new Map()
 const fileHandles = new Map()
+const pickedFolderFiles = new Map()
+const folderPickerInput = ref(null)
 const supportsDirectoryPicker = typeof window !== 'undefined' && 'showDirectoryPicker' in window
 const dbfEncodingOptions = [
   { value: 'utf-8', label: 'UTF-8' },
@@ -312,6 +314,13 @@ function readStorage(key) {
 
 function writeStorage(key, data) {
   localStorage.setItem(key, JSON.stringify(data))
+}
+
+function writeStoredFolders() {
+  writeStorage(
+    STORAGE_KEYS.folders,
+    folders.value.filter((folder) => folder.mode !== 'browser-files')
+  )
 }
 
 function openFolderHandleDb() {
@@ -691,16 +700,17 @@ function addFolderConnection() {
   }
 
   folders.value.unshift(folder)
-  writeStorage(STORAGE_KEYS.folders, folders.value)
+  writeStoredFolders()
   folderForm.name = ''
   folderForm.path = ''
   folderFormVisible.value = false
 }
 
 async function chooseLocalFolder() {
-  if (!supportsDirectoryPicker) {
-    folderFormVisible.value = true
-    errorMessage.value = '当前浏览器不支持直接选择文件夹，请使用手动路径方式。'
+  errorMessage.value = ''
+
+  if (!supportsDirectoryPicker || (typeof window !== 'undefined' && window.isSecureContext === false)) {
+    openFolderPickerInput()
     return
   }
 
@@ -723,7 +733,7 @@ async function chooseLocalFolder() {
     folderHandles.set(folder.id, handle)
     await saveFolderHandle(folder.id, handle)
     folders.value.unshift(folder)
-    writeStorage(STORAGE_KEYS.folders, folders.value)
+    writeStoredFolders()
     expandedFolders.value = [...new Set([folder.id, ...expandedFolders.value])]
     await loadFolderFiles(folder)
   } catch (error) {
@@ -733,13 +743,98 @@ async function chooseLocalFolder() {
   }
 }
 
+function openFolderPickerInput() {
+  if (!folderPickerInput.value) {
+    folderFormVisible.value = true
+    errorMessage.value = '当前浏览器不支持直接选择文件夹，请使用手动路径方式。'
+    return
+  }
+
+  folderPickerInput.value.value = ''
+  folderPickerInput.value.click()
+}
+
+function normalizeFolderFilePath(value) {
+  return String(value || '').replace(/\\/g, '/').replace(/^\/+/, '')
+}
+
+function getPickedRootName(files) {
+  const firstPath = normalizeFolderFilePath(files[0]?.webkitRelativePath || files[0]?.name || '')
+  return firstPath.split('/')[0] || '本地文件夹'
+}
+
+function registerPickedFolderFiles(folder, files) {
+  const fileMap = new Map()
+  const visibleFiles = []
+
+  files.forEach((file) => {
+    const relativePath = normalizeFolderFilePath(file.webkitRelativePath || file.name)
+    if (!relativePath) return
+
+    fileMap.set(relativePath.toLowerCase(), {
+      file,
+      path: relativePath
+    })
+
+    const type = getSupportedFileType(file.name)
+    if (!type) return
+
+    const id = `browser-files:${folder.id}:${relativePath}`
+    fileHandles.set(id, { getFile: async () => file })
+    visibleFiles.push({
+      id,
+      name: file.name,
+      path: relativePath,
+      type,
+      folderId: folder.id,
+      fileMode: 'browser'
+    })
+  })
+
+  pickedFolderFiles.set(folder.id, fileMap)
+  filesByFolder[folder.id] = visibleFiles.sort((a, b) => a.path.localeCompare(b.path))
+}
+
+function handleFolderPickerChange(event) {
+  const files = Array.from(event.target?.files || [])
+  if (event.target) {
+    event.target.value = ''
+  }
+
+  if (!files.length) return
+
+  const rootName = getPickedRootName(files)
+  const folder = {
+    id: `folder-${Date.now()}`,
+    name: rootName,
+    path: `客户端文件夹：${rootName}`,
+    mode: 'browser-files'
+  }
+
+  registerPickedFolderFiles(folder, files)
+  folders.value.unshift(folder)
+  expandedFolders.value = [...new Set([folder.id, ...expandedFolders.value])]
+  writeStoredFolders()
+
+  if (!filesByFolder[folder.id]?.length) {
+    errorMessage.value = '已选择文件夹，但没有发现 .shp 或 .geojson 文件。'
+  }
+}
+
 function removeFolder(folder) {
+  const folderFiles = filesByFolder[folder.id] || []
+  folderFiles.forEach((file) => {
+    fileHandles.delete(fileKey(file))
+  })
   folders.value = folders.value.filter((item) => item.id !== folder.id)
   delete filesByFolder[folder.id]
   expandedFolders.value = expandedFolders.value.filter((id) => id !== folder.id)
-  writeStorage(STORAGE_KEYS.folders, folders.value)
+  writeStoredFolders()
   folderHandles.delete(folder.id)
-  deleteFolderHandle(folder.id).catch(() => {})
+  pickedFolderFiles.delete(folder.id)
+  if (folder.mode === 'browser') {
+    deleteFolderHandle(folder.id).catch(() => {})
+  }
 }
 
 function isFolderExpanded(folderId) {
@@ -768,6 +863,8 @@ async function loadFolderFiles(folder) {
   try {
     if (folder.mode === 'browser') {
       filesByFolder[folder.id] = await listBrowserFolderFiles(folder)
+    } else if (folder.mode === 'browser-files') {
+      filesByFolder[folder.id] = listPickedFolderFiles(folder)
     } else {
       const res = await apiClient.get('/api/files', {
         params: { path: folder.path }
@@ -785,6 +882,32 @@ async function loadFolderFiles(folder) {
   }
 }
 
+function listPickedFolderFiles(folder) {
+  const fileMap = pickedFolderFiles.get(folder.id)
+  if (!fileMap) {
+    throw new Error('客户端文件夹选择仅在当前页面会话有效，请重新点击“选择”。')
+  }
+
+  return Array.from(fileMap.values())
+    .map((entry) => {
+      const type = getSupportedFileType(entry.file.name)
+      if (!type) return null
+
+      const id = `browser-files:${folder.id}:${entry.path}`
+      fileHandles.set(id, { getFile: async () => entry.file })
+      return {
+        id,
+        name: entry.file.name,
+        path: entry.path,
+        type,
+        folderId: folder.id,
+        fileMode: 'browser'
+      }
+    })
+    .filter(Boolean)
+    .sort((a, b) => a.path.localeCompare(b.path))
+}
+
 function getSupportedFileType(fileName) {
   const value = fileName.toLowerCase()
 
@@ -792,6 +915,24 @@ function getSupportedFileType(fileName) {
   if (value.endsWith('.geojson') || value.endsWith('.json')) return 'geojson'
 
   return null
+}
+
+function getPickedFolderFile(folderId, relativePath) {
+  const fileMap = pickedFolderFiles.get(folderId)
+  const normalizedPath = normalizeFolderFilePath(relativePath).toLowerCase()
+  return fileMap?.get(normalizedPath)?.file || null
+}
+
+function getPickedCompanionFile(payload, extension) {
+  const relativePath = normalizeFolderFilePath(payload.path || payload.name)
+  const lastSlash = relativePath.lastIndexOf('/')
+  const dir = lastSlash >= 0 ? relativePath.slice(0, lastSlash + 1) : ''
+  const fileName = lastSlash >= 0 ? relativePath.slice(lastSlash + 1) : relativePath
+  const baseName = fileName.replace(/\.[^.]+$/i, '')
+  const companionName = `${baseName}.${extension}`
+
+  return getPickedFolderFile(payload.folderId, `${dir}${companionName}`)
+    || getPickedFolderFile(payload.folderId, companionName)
 }
 
 function getGeoJsonCrs(geojson) {
@@ -1667,23 +1808,30 @@ async function readBrowserFileGeojson(payload, encoding = 'utf-8') {
 
   if (payload.type === 'shp') {
     const shpBuffer = await file.arrayBuffer()
-    const folderHandle = folderHandles.get(payload.folderId) || await getFolderHandle(payload.folderId)
     const baseName = payload.name.replace(/\.shp$/i, '')
+    const folderHandle = folderHandles.get(payload.folderId) || await getFolderHandle(payload.folderId)
     let dbfBuffer
     let prjText = ''
 
-    try {
-      const dbfHandle = await folderHandle.getFileHandle(`${baseName}.dbf`)
-      dbfBuffer = await (await dbfHandle.getFile()).arrayBuffer()
-    } catch (error) {
-      dbfBuffer = undefined
-    }
+    if (folderHandle) {
+      try {
+        const dbfHandle = await folderHandle.getFileHandle(`${baseName}.dbf`)
+        dbfBuffer = await (await dbfHandle.getFile()).arrayBuffer()
+      } catch (error) {
+        dbfBuffer = undefined
+      }
 
-    try {
-      const prjHandle = await folderHandle.getFileHandle(`${baseName}.prj`)
-      prjText = await (await prjHandle.getFile()).text()
-    } catch (error) {
-      prjText = ''
+      try {
+        const prjHandle = await folderHandle.getFileHandle(`${baseName}.prj`)
+        prjText = await (await prjHandle.getFile()).text()
+      } catch (error) {
+        prjText = ''
+      }
+    } else {
+      const dbfFile = getPickedCompanionFile(payload, 'dbf')
+      const prjFile = getPickedCompanionFile(payload, 'prj')
+      dbfBuffer = dbfFile ? await dbfFile.arrayBuffer() : undefined
+      prjText = prjFile ? await prjFile.text() : ''
     }
 
     const dbfEncoding = normalizeDbfEncoding(encoding)
@@ -2015,6 +2163,18 @@ defineExpose({
             <em>{{ folderCount }}</em>
             <span class="group-actions">
               <button class="mini-btn" type="button" @click.stop="chooseLocalFolder">选择</button>
+              <input
+                ref="folderPickerInput"
+                class="folder-picker-input"
+                type="file"
+                webkitdirectory
+                directory
+                multiple
+                tabindex="-1"
+                aria-hidden="true"
+                @click.stop
+                @change="handleFolderPickerChange"
+              />
               <button class="mini-btn secondary" type="button" @click.stop="folderFormVisible = !folderFormVisible">路径</button>
             </span>
           </div>
@@ -2665,6 +2825,10 @@ h2 {
 .group-actions {
   display: inline-flex;
   gap: 6px;
+}
+
+.folder-picker-input {
+  display: none;
 }
 
 .mini-btn.secondary {

@@ -9,10 +9,10 @@ Add-Content -Path $outLog -Value "[$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')] st
 $listeners = netstat -ano | Select-String -Pattern ':3000\s+.*LISTENING'
 foreach ($listener in $listeners) {
   $parts = ($listener.Line -split '\s+') | Where-Object { $_ }
-  $pid = $parts[-1]
-  if ($pid -match '^\d+$') {
-    Add-Content -Path $outLog -Value "[$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')] stopping old process $pid on port 3000"
-    Stop-Process -Id ([int]$pid) -Force -ErrorAction SilentlyContinue
+  $processId = $parts[-1]
+  if ($processId -match '^\d+$') {
+    Add-Content -Path $outLog -Value "[$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')] stopping old process $processId on port 3000"
+    Stop-Process -Id ([int]$processId) -Force -ErrorAction SilentlyContinue
   }
 }
 

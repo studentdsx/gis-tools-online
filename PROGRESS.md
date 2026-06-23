@@ -311,6 +311,76 @@
   - `EPSG:4326 -> EPSG:3857` 坐标转换成功。
   - GBK DBF buffer 生成成功。
   - Shapefile zip 生成成功。
+- 补充 Docker 部署方案：
+  - 根目录新增 `docker-compose.yml`，编排 `frontend`、`backend`、`postgis` 三个服务。
+  - 新增 `.env.docker.example`、前后端 `Dockerfile`、`.dockerignore` 和前端 `nginx.conf`。
+  - 新增 `docs/docker-deployment.md`，覆盖快速启动、环境变量、数据目录、数据库初始化、更新部署、生产建议和 FAQ。
+  - README 增加 Docker Compose 快速部署入口。
+  - 已执行 `docker compose config --quiet` 通过；`docker compose build` 因 Docker Desktop Linux daemon 未运行而未完成。
+  - 已部署到 `10.10.201.118:/usr/local/deploys/git-tools-online`，远端 Docker Compose 构建和启动完成；`frontend`、`backend`、`postgis` 均为 healthy。
+  - 已验证 `http://10.10.201.118:8080/`、`http://10.10.201.118:8080/api/health`、服务器本机 `/portal` 访问通过。
+  - 远端 Compose 端口已收敛：仅 `0.0.0.0:8080` 对外，`backend:3000` 和 `postgis:5432` 仅绑定 `127.0.0.1`；外部直连 `10.10.201.118:3000` 已验证超时。
+- 本地矢量文件导入弹框增加字段和属性预览：
+  - 选择 GeoJSON/Shapefile 后显示要素数、字段数、几何类型和前 8 条属性记录。
+  - Shapefile 预览受 `DBF 编码` 选项影响，切换 UTF-8/GBK 会重新解析预览，便于导入前确认是否乱码。
+  - 本地矢量导入弹框改为宽布局，预览表格支持横向/纵向滚动；窄屏自动切回单列。
+  - 已执行 `gis-tools-frontend` 的 `npm.cmd run build` 通过；仍有既有 bundle 大小提示。
+  - 已用 GBK Shapefile 脚本验证：同一 DBF 按 `GBK` 读取中文正常，按 `UTF-8` 读取出现乱码；本地矢量预览头部已显示当前按 UTF-8/GBK 解析。
+- China Coord Convert 输出默认命名优化：
+  - 默认输出名由固定 `xxx Result` 改为 `输入名_FROM_to_TO`，例如 `道路_WGS84_to_GCJ02`。
+  - 切换转换方向、输入图层、输入模式或上传文件时会自动更新默认名；用户手动修改输出名后不再自动覆盖。
+  - 执行转换时空输出名也会走同一套默认命名规则。
+  - 已执行 `gis-tools-frontend` 的 `npm.cmd run build` 通过；仍有既有 bundle 大小提示。
+- OSM 行政边界下载几何修复：
+  - 行政边界预设由泛化 `boundary` 调整为 `boundary=administrative`，减少非行政边界混入。
+  - 后端 `relation` 边界解析改为先拼接 outer way 片段形成闭合环，再输出 Polygon/MultiPolygon；不再把每段 way 强行闭合成碎面。
+  - 支持 inner ring 简单归属到包含它的 outer polygon，用于处理带洞的多面。
+  - 已执行 `gis-tools-backend` 的 `node --check src/routes/download.js` 通过。
+  - 已用模拟 OSM relation 验证两个 outer way 片段可拼成一个闭合 Polygon；本地后端已重启，`/api/health` 和前端代理 `/api/health` 均返回 200。
+- Docker 部署配置外置和挂载项梳理：
+  - 根目录 `.env` 只保留 Docker Compose 端口绑定，示例来自 `.env.docker.example`。
+  - 新增 `config/backend.env.example`，部署时复制为 `config/backend.env`，通过 `env_file` 注入后端运行时配置。
+  - 新增 `config/postgis.env.example`，部署时复制为 `config/postgis.env`，通过 `env_file` 注入 PostGIS 初始化配置。
+  - 新增 `config/nginx.conf`，Docker Compose 以只读方式挂载到 `/etc/nginx/conf.d/default.conf`，便于部署时调整反向代理和上传大小。
+  - `docker-data/` 继续挂载到后端 `/data`，用于容器内读取服务器本地矢量文件；PostGIS 数据继续使用 `postgis-data` Docker volume。
+  - `.gitignore` 已忽略真实配置文件 `.env`、`config/*.env` 和 `docker-data/`，保留 `*.example` 示例文件。
+  - README 和 `docs/docker-deployment.md` 已补充 Windows/Linux 初始化命令、配置文件说明和挂载目录说明。
+  - 已在根目录和 `.sync-gis-tools-online` 执行 `docker compose config --quiet` 通过；Docker 客户端读取用户目录配置有权限 warning，但退出码为 0，不影响 Compose 配置解析。
+- Docker 跨服务器部署配置修正：
+  - 前端新增运行时配置机制：`config/frontend.env` 挂载到 `/etc/gis-tools/frontend.env`，前端 Nginx 容器启动时生成 `/runtime-config.js`。
+  - 前端 API 地址和 Mapbox token 改为优先读取 `window.__GIS_TOOLS_CONFIG__`，再回退到 Vite 构建期变量。
+  - `runtime-config.js` 已放到 `index.html` 的 `<head>` 中，确保早于前端入口脚本加载。
+  - 根目录 `.env.docker.example` 收敛为只管理宿主机端口绑定；前端运行时配置迁移到 `config/frontend.env.example`。
+  - Docker Compose 中 backend 不再强依赖本地 PostGIS，frontend 不再强依赖本地 backend，支持前端、后端、数据库分别部署在不同服务器。
+  - backend 和 frontend 服务增加 `host.docker.internal:host-gateway`，便于容器访问 Docker 宿主机上的后端或数据库服务。
+  - README 和 `docs/docker-deployment.md` 已明确：`VITE_API_BASE_URL` 填浏览器可访问的后端 API 地址，`DB_HOST` 填后端容器可访问的数据库地址。
+  - 已执行 `gis-tools-frontend` 的 `node --check src/config/runtime.js`、`node --check src/api/client.js`、`npm.cmd run build` 通过；仍有既有 bundle 大小提示。
+  - 已执行根目录 `docker compose config --quiet` 通过；Docker 客户端读取用户目录配置有权限 warning，但退出码为 0。
+- Docker 离线部署方案调整：
+  - `docker-compose.yml` 调整为部署机运行期文件，只引用 `FRONTEND_IMAGE/BACKEND_IMAGE/POSTGIS_IMAGE` 镜像，不再包含 `build`。
+  - 新增 `docker-compose.build.yml`，仅用于构建机执行前端/后端镜像构建。
+  - 新增 `scripts/docker-package-offline.ps1` 和 `scripts/docker-package-offline.sh`，用于构建机打包前端、后端、PostGIS 离线镜像和运行期文件。
+  - 新增 `deploy/run-frontend.sh`、`deploy/run-backend.sh`、`deploy/run-postgis.sh`，支持部署机按单容器启动，启动命令中显式挂载 `config/frontend.env`、`config/backend.env`、`config/postgis.env`、`config/nginx.conf` 和 `docker-data/`。
+  - `.env.docker.example` 增加镜像名和 tag 配置；`.gitignore` 增加 `docker-dist/`。
+  - README 和 `docs/docker-deployment.md` 已改为构建机打包、部署机离线 `docker load` 后启动的流程。
+  - 已执行 `docker compose -f docker-compose.yml config --quiet` 和 `docker compose -f docker-compose.build.yml config --quiet` 通过；运行期 compose 已确认不含 `build:`。
+  - 已执行 `scripts/docker-package-offline.ps1` 的 PowerShell 语法解析检查通过；未实际执行镜像构建和打包。
+- PostGIS Docker 时区与宿主机一致：
+  - `config/postgis.env.example` 增加 `TZ=Asia/Shanghai` 和 `PGTZ=Asia/Shanghai`，部署时可按宿主机实际时区调整。
+  - `docker-compose.yml` 的 PostGIS 服务增加只读挂载 `/etc/localtime`、`/etc/timezone`。
+  - `deploy/run-postgis.sh` 增加宿主机时区文件检测，存在时挂载到 PostGIS 容器。
+  - `docs/docker-deployment.md` 和 README 已补充时区配置、验证命令和已有数据库卷的处理方式。
+  - 已执行 `docker compose -f docker-compose.yml config --quiet` 和 `docker compose -f docker-compose.build.yml config --quiet` 通过；Docker 客户端读取用户目录配置有权限 warning，但退出码为 0。
+- 10.10.201.118 离线 Docker 部署验证：
+  - 本机 Docker Desktop engine 需提升权限访问；已用提升权限完成前端/后端镜像构建和 PostGIS 镜像拉取。
+  - 首次构建因 Docker daemon 的 USTC 镜像源 EOF 失败，改为从 `docker.m.daocloud.io` 拉取 `node:22-bookworm-slim`、`nginx:1.27-alpine` 并打标准本地 tag 后构建通过。
+  - 修复 `scripts/docker-package-offline.ps1`：native Docker 命令失败时立即抛错，并额外生成 Linux 部署用 `gis-tools-runtime-files.tar.gz`。
+  - 已生成并上传 `docker-dist/gis-tools-images.tar`、`gis-tools-runtime-files.tar.gz` 和本机实际 `.env`、`config/frontend.env`、`config/backend.env`、`config/postgis.env`。
+  - 已停止远端旧容器，并将旧目录备份到 `/usr/local/deploys/_backups/git-tools-online-20260623163931`。
+  - 已在远端 `/usr/local/deploys/git-tools-online` 加载离线镜像并启动新版 Compose。
+  - 远端验证通过：`gis-tools-frontend`、`gis-tools-backend`、`gis-tools-postgis` 均 healthy；`http://10.10.201.118:8080/` 和 `/api/health` 返回 200。
+  - 远端 `runtime-config.js` 正常生成，当前 `VITE_API_BASE_URL` 和 `VITE_MAPBOX_ACCESS_TOKEN` 均为空。
+  - 远端 PostGIS `SHOW timezone;` 返回 `Asia/Shanghai`。
 
 ## 待继续/风险
 

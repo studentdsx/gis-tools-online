@@ -22,7 +22,7 @@ const OSM_TAG_PRESETS = {
   water: ['waterway', 'natural=water', 'water'],
   landuse: ['landuse'],
   transport: ['railway', 'public_transport', 'aeroway'],
-  boundary: ['boundary']
+  boundary: ['boundary=administrative']
 }
 
 const OSM_TYPE_LABELS = {
@@ -205,6 +205,79 @@ function isSameCoord(a, b) {
     && Math.abs(a[1] - b[1]) < 1e-10
 }
 
+function getMemberCoords(member) {
+  return (member?.geometry || [])
+    .map((coord) => [coord.lon, coord.lat])
+    .filter((coord) => Number.isFinite(coord[0]) && Number.isFinite(coord[1]))
+}
+
+function stitchWaySegments(segments) {
+  const pending = segments
+    .map((coords) => coords.filter((coord) => Array.isArray(coord)))
+    .filter((coords) => coords.length >= 2)
+    .map((coords) => coords.map((coord) => [...coord]))
+  const rings = []
+  const openLines = []
+
+  while (pending.length) {
+    let line = pending.shift()
+    let changed = true
+
+    while (!isSameCoord(line[0], line[line.length - 1]) && changed) {
+      changed = false
+
+      for (let index = 0; index < pending.length; index += 1) {
+        const segment = pending[index]
+        const lineStart = line[0]
+        const lineEnd = line[line.length - 1]
+        const segmentStart = segment[0]
+        const segmentEnd = segment[segment.length - 1]
+
+        if (isSameCoord(lineEnd, segmentStart)) {
+          line = line.concat(segment.slice(1))
+        } else if (isSameCoord(lineEnd, segmentEnd)) {
+          line = line.concat([...segment].reverse().slice(1))
+        } else if (isSameCoord(lineStart, segmentEnd)) {
+          line = segment.slice(0, -1).concat(line)
+        } else if (isSameCoord(lineStart, segmentStart)) {
+          line = [...segment].reverse().slice(0, -1).concat(line)
+        } else {
+          continue
+        }
+
+        pending.splice(index, 1)
+        changed = true
+        break
+      }
+    }
+
+    if (isSameCoord(line[0], line[line.length - 1]) && line.length >= 4) {
+      rings.push(line)
+    } else {
+      openLines.push(line)
+    }
+  }
+
+  return { rings, openLines }
+}
+
+function pointInRing(point, ring) {
+  if (!Array.isArray(point) || !Array.isArray(ring) || ring.length < 4) return false
+
+  const [x, y] = point
+  let inside = false
+
+  for (let i = 0, j = ring.length - 1; i < ring.length; j = i, i += 1) {
+    const [xi, yi] = ring[i]
+    const [xj, yj] = ring[j]
+    const intersects = ((yi > y) !== (yj > y))
+      && (x < ((xj - xi) * (y - yi)) / ((yj - yi) || Number.EPSILON) + xi)
+    if (intersects) inside = !inside
+  }
+
+  return inside
+}
+
 function isAreaWay(element, coords) {
   if (!coords.length || !isSameCoord(coords[0], coords[coords.length - 1])) return false
   const tags = element.tags || {}
@@ -255,22 +328,33 @@ function wayToFeature(element, geometryMode = 'mixed') {
 function relationToFeature(element, geometryMode = 'mixed') {
   const tags = element.tags || {}
   const members = element.members || []
-  const rings = members
+  const outerSegments = members
     .filter((member) => member.type === 'way' && member.role !== 'inner')
-    .map((member) => (member.geometry || [])
-      .map((coord) => [coord.lon, coord.lat])
-      .filter((coord) => Number.isFinite(coord[0]) && Number.isFinite(coord[1])))
+    .map(getMemberCoords)
+    .filter((coords) => coords.length >= 2)
+  const innerSegments = members
+    .filter((member) => member.type === 'way' && member.role === 'inner')
+    .map(getMemberCoords)
     .filter((coords) => coords.length >= 2)
 
-  if (!rings.length) return null
+  if (!outerSegments.length) return null
 
   if (tags.type === 'multipolygon' || tags.boundary || tags.landuse || tags.natural || tags.building) {
     if (geometryMode === 'line') return null
-    const polygons = rings.map((coords) => {
-      const closed = isSameCoord(coords[0], coords[coords.length - 1])
-        ? coords
-        : [...coords, coords[0]]
-      return [closed]
+
+    const { rings: outerRings } = stitchWaySegments(outerSegments)
+    if (!outerRings.length) return null
+
+    const { rings: innerRings } = stitchWaySegments(innerSegments)
+    const polygons = outerRings.map((ring) => [ring])
+
+    innerRings.forEach((innerRing) => {
+      const targetPolygon = polygons.find((polygon) => pointInRing(innerRing[0], polygon[0]))
+      if (targetPolygon) {
+        targetPolygon.push(innerRing)
+      } else if (polygons[0]) {
+        polygons[0].push(innerRing)
+      }
     })
 
     return {
@@ -284,11 +368,15 @@ function relationToFeature(element, geometryMode = 'mixed') {
 
   if (geometryMode === 'polygon') return null
 
+  const { rings, openLines } = stitchWaySegments(outerSegments)
+  const lines = [...rings, ...openLines]
+  if (!lines.length) return null
+
   return {
     type: 'Feature',
-    geometry: rings.length === 1
-      ? { type: 'LineString', coordinates: rings[0] }
-      : { type: 'MultiLineString', coordinates: rings },
+    geometry: lines.length === 1
+      ? { type: 'LineString', coordinates: lines[0] }
+      : { type: 'MultiLineString', coordinates: lines },
     properties: createOsmProperties(element)
   }
 }

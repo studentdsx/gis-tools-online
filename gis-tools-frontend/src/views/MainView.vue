@@ -61,6 +61,14 @@ const toolDialogDragState = {
   startDialogY: 0
 }
 const vectorFiles = ref([])
+const vectorPreviewFields = ref([])
+const vectorPreviewRows = ref([])
+const vectorPreviewInfo = reactive({
+  featureCount: 0,
+  geometryTypes: [],
+  loading: false,
+  error: ''
+})
 const csvFile = ref(null)
 const csvColumns = ref([])
 const csvPreviewRows = ref([])
@@ -87,6 +95,8 @@ const crsTransformReferenceLoading = reactive({
 })
 let csvPreviewRefreshTimer = null
 let csvPreviewRequestId = 0
+let vectorPreviewRefreshTimer = null
+let vectorPreviewRequestId = 0
 const crsTransformReferenceRequestIds = {
   source: 0,
   target: 0
@@ -124,6 +134,7 @@ const coordConvertForm = reactive({
   showResult: true
 })
 const coordConvertFiles = ref([])
+const coordConvertOutputNameManual = ref(false)
 const crsTransformForm = reactive({
   inputMode: 'layer',
   layerId: '',
@@ -403,6 +414,18 @@ const vectorSummary = computed(() => {
   if (!vectorFiles.value.length) return '未选择文件'
   return vectorFiles.value.map((file) => file.name).join(' / ')
 })
+const vectorEncodingLabel = computed(() => vectorForm.encoding === 'gbk' ? 'GBK' : 'UTF-8')
+const vectorPreviewStatusText = computed(() => {
+  if (!vectorFiles.value.length) return '等待文件'
+  if (vectorPreviewInfo.loading) return `按 ${vectorEncodingLabel.value} 解析中...`
+  if (vectorPreviewInfo.error) return `按 ${vectorEncodingLabel.value} 解析失败`
+  if (!vectorPreviewFields.value.length) return `按 ${vectorEncodingLabel.value} 未解析到属性字段`
+  return `${vectorPreviewInfo.featureCount} 个要素 / ${vectorPreviewFields.value.length} 个字段 / 按 ${vectorEncodingLabel.value}`
+})
+const vectorPreviewGeometryText = computed(() => {
+  if (!vectorPreviewInfo.geometryTypes.length) return '几何类型待解析'
+  return vectorPreviewInfo.geometryTypes.join(' / ')
+})
 const cadSummary = computed(() => {
   if (!cadFiles.value.length) return '未选择文件'
   return cadFiles.value.map((file) => file.name).join(' / ')
@@ -433,6 +456,7 @@ const coordConvertLayers = computed(() => resourceRef.value?.getDataLayers?.() |
 const coordConvertMeta = computed(() => {
   return coordConvertOptions.find((item) => item.value === coordConvertForm.direction) || coordConvertOptions[0]
 })
+const coordConvertDefaultOutputName = computed(() => getCoordConvertDefaultOutputName())
 const coordConvertReady = computed(() => {
   if (!coordConvertForm.direction) return false
   if (coordConvertForm.inputMode === 'upload') return Boolean(coordConvertFiles.value.length)
@@ -630,6 +654,8 @@ function toggleToolDialogCollapsed() {
 
 onBeforeUnmount(() => {
   window.clearTimeout(appToastTimer)
+  window.clearTimeout(csvPreviewRefreshTimer)
+  window.clearTimeout(vectorPreviewRefreshTimer)
   endToolDialogDrag()
 })
 
@@ -708,6 +734,99 @@ function handleReorderLayer(layerIds) {
 
 function handleTableDrop(payload) {
   resourceRef.value?.addDroppedSource(payload)
+}
+
+function getDroppedFileExt(fileName) {
+  const match = String(fileName || '').match(/\.([^.]+)$/)
+  return match ? match[1].toLowerCase() : ''
+}
+
+function getDroppedFileStem(fileName) {
+  return String(fileName || '').replace(/\.[^.]+$/g, '').toLowerCase()
+}
+
+function groupDroppedVectorFiles(files) {
+  const fileList = Array.from(files || [])
+  const groups = []
+  const shapefileGroups = new Map()
+
+  fileList.forEach((file) => {
+    const ext = getDroppedFileExt(file.name)
+
+    if (ext === 'geojson' || ext === 'json') {
+      groups.push({
+        key: `geojson:${file.name}:${file.lastModified}`,
+        files: [file],
+        name: getVectorFileBaseName(file.name)
+      })
+      return
+    }
+
+    if (!['shp', 'dbf', 'prj'].includes(ext)) return
+
+    const stem = getDroppedFileStem(file.name)
+    const current = shapefileGroups.get(stem) || {
+      key: `shp:${stem}`,
+      files: [],
+      name: getVectorFileBaseName(file.name)
+    }
+    current.files.push(file)
+    if (ext === 'shp') current.name = getVectorFileBaseName(file.name)
+    shapefileGroups.set(stem, current)
+  })
+
+  shapefileGroups.forEach((group) => {
+    if (group.files.some((file) => /\.shp$/i.test(file.name))) {
+      groups.push(group)
+    }
+  })
+
+  return groups
+}
+
+async function handleMapFileDrop(files) {
+  const groups = groupDroppedVectorFiles(files)
+
+  if (!groups.length) {
+    showAppToast('请拖入 GeoJSON，或 Shapefile 的 .shp/.dbf/.prj 文件。', 'error')
+    return
+  }
+
+  toolBusy.value = true
+  const panel = await ensureResourcePanel()
+  const loaded = []
+  const failed = []
+
+  for (const group of groups) {
+    try {
+      const input = await readVectorFilesAsGeoJson(group.files, { encoding: 'utf-8' })
+      const transformed = transformGeoJsonIfNeeded(input.geojson, input.sourceCrs)
+      panel?.addExternalLayer({
+        name: input.name || group.name || '拖拽图层',
+        subtitle: input.sourceCrs ? `拖拽文件 / ${input.sourceCrs}` : '拖拽文件 / 源坐标系未解析',
+        sourceKind: 'drag-drop-file',
+        sourceKey: `drag-drop:${group.key}:${Date.now()}`,
+        sourceCrs: input.sourceCrs,
+        needsTransform: transformed.needsTransform,
+        geometryType: inferGeometryType(transformed.geojson),
+        geojson: transformed.geojson,
+        fitOnAdd: true
+      })
+      loaded.push(input.name || group.name)
+    } catch (error) {
+      failed.push(`${group.name || '文件'}：${error.message || '解析失败'}`)
+    }
+  }
+
+  toolBusy.value = false
+
+  if (loaded.length) {
+    showAppToast(`已添加 ${loaded.length} 个拖拽图层`)
+  }
+
+  if (failed.length) {
+    showAppToast(failed.slice(0, 2).join('；'), 'error')
+  }
 }
 
 async function handleLayerExport(payload) {
@@ -2410,6 +2529,10 @@ async function handleToolAction(action) {
 
   activeTool.value = action
 
+  if (action === 'local-vector-import') {
+    scheduleVectorPreviewRefresh()
+  }
+
   if (action === 'csv-import' || action === 'cad-import') {
     await loadSpatialReferences()
   }
@@ -2487,11 +2610,44 @@ function transformGeoJsonIfNeeded(geojson, sourceCrs) {
   }
 }
 
+function sanitizeCoordOutputNamePart(value, fallback = 'ChinaCoord') {
+  return String(value || fallback)
+    .trim()
+    .replace(/[\\/:*?"<>|]+/g, '_')
+    .replace(/\s+/g, '_')
+    .replace(/^_+|_+$/g, '')
+    .slice(0, 96) || fallback
+}
+
+function getCoordConvertInputName() {
+  if (coordConvertForm.inputMode === 'upload') {
+    const primary = coordConvertFiles.value.find((file) => /\.(geojson|json|shp)$/i.test(file.name)) || coordConvertFiles.value[0]
+    return primary ? getFileBaseName(primary.name) : 'ChinaCoord'
+  }
+
+  const layer = resourceRef.value?.getLayerById?.(coordConvertForm.layerId)
+  return layer?.name || 'ChinaCoord'
+}
+
+function getCoordConvertDefaultOutputName(direction = coordConvertForm.direction) {
+  const meta = coordConvertOptions.find((item) => item.value === direction) || coordConvertOptions[0]
+  const baseName = sanitizeCoordOutputNamePart(getCoordConvertInputName())
+  const from = sanitizeCoordOutputNamePart(meta?.from, 'FROM')
+  const to = sanitizeCoordOutputNamePart(meta?.to, 'TO')
+  return `${baseName}_${from}_to_${to}`
+}
+
+function syncCoordConvertOutputName() {
+  if (coordConvertOutputNameManual.value) return
+  coordConvertForm.outputName = getCoordConvertDefaultOutputName()
+}
+
 function resetCoordConvertForm(direction = coordConvertOptions[0].value) {
   coordConvertForm.direction = direction
   coordConvertForm.inputMode = 'layer'
   coordConvertForm.layerId = coordConvertLayers.value[0]?.id || ''
-  coordConvertForm.outputName = `${coordConvertOptions.find((item) => item.value === direction)?.label || 'Coord Convert'} Result`
+  coordConvertOutputNameManual.value = false
+  coordConvertForm.outputName = getCoordConvertDefaultOutputName(direction)
   coordConvertForm.outputFormat = 'geojson'
   coordConvertForm.showResult = true
   coordConvertFiles.value = []
@@ -2499,10 +2655,7 @@ function resetCoordConvertForm(direction = coordConvertOptions[0].value) {
 
 function handleCoordConvertFile(event) {
   coordConvertFiles.value = Array.from(event.target.files || [])
-  const primary = coordConvertFiles.value.find((file) => /\.(geojson|json|shp)$/i.test(file.name))
-  if (primary && !coordConvertForm.outputName) {
-    coordConvertForm.outputName = `${getFileBaseName(primary.name)}-${coordConvertMeta.value.label}`
-  }
+  syncCoordConvertOutputName()
   toolMessage.value = ''
 }
 
@@ -2818,7 +2971,7 @@ async function runCoordConvert() {
     const input = await getCoordConvertInputGeoJson()
     const meta = coordConvertMeta.value
     const geojson = convertGeoJsonCoordinates(input.geojson, coordConvertForm.direction)
-    const outputName = coordConvertForm.outputName || `${input.name}-${meta.label}`
+    const outputName = coordConvertForm.outputName || getCoordConvertDefaultOutputName()
     const savedName = await saveGeoJsonOutput({
       geojson,
       outputName,
@@ -3219,6 +3372,24 @@ watch(
 )
 
 watch(
+  () => vectorForm.encoding,
+  () => {
+    if (activeTool.value === 'local-vector-import') {
+      scheduleVectorPreviewRefresh()
+    }
+  }
+)
+
+watch(
+  () => [coordConvertForm.direction, coordConvertForm.inputMode, coordConvertForm.layerId],
+  () => {
+    if (activeTool.value === 'coord-convert') {
+      syncCoordConvertOutputName()
+    }
+  }
+)
+
+watch(
   () => visualizationForm.layerId,
   () => {
     if (visualizationToolIds.includes(activeTool.value)) {
@@ -3310,12 +3481,102 @@ async function importCsvLayer() {
   }
 }
 
+function resetVectorPreview() {
+  vectorPreviewFields.value = []
+  vectorPreviewRows.value = []
+  vectorPreviewInfo.featureCount = 0
+  vectorPreviewInfo.geometryTypes = []
+  vectorPreviewInfo.loading = false
+  vectorPreviewInfo.error = ''
+}
+
+function formatVectorPreviewValue(value) {
+  if (value === null || value === undefined) return ''
+  if (value instanceof Date) return value.toISOString()
+  if (typeof value === 'object') {
+    try {
+      return JSON.stringify(value)
+    } catch (error) {
+      return String(value)
+    }
+  }
+  return String(value)
+}
+
+function buildVectorPreview(geojson) {
+  const features = Array.isArray(geojson?.features) ? geojson.features : []
+  const fields = []
+  const fieldSet = new Set()
+  const geometryTypes = new Set()
+
+  for (const feature of features) {
+    if (feature?.geometry?.type) {
+      geometryTypes.add(feature.geometry.type)
+    }
+
+    const properties = feature?.properties || {}
+    Object.keys(properties).forEach((field) => {
+      if (fieldSet.has(field)) return
+      fieldSet.add(field)
+      fields.push(field)
+    })
+  }
+
+  vectorPreviewFields.value = fields
+  vectorPreviewRows.value = features.slice(0, 8).map((feature, index) => {
+    const properties = feature?.properties || {}
+    const row = { __rowNumber: index + 1 }
+    fields.forEach((field) => {
+      row[field] = formatVectorPreviewValue(properties[field])
+    })
+    return row
+  })
+  vectorPreviewInfo.featureCount = features.length
+  vectorPreviewInfo.geometryTypes = [...geometryTypes].slice(0, 6)
+}
+
+async function refreshVectorPreview() {
+  window.clearTimeout(vectorPreviewRefreshTimer)
+  const requestId = ++vectorPreviewRequestId
+
+  if (!vectorFiles.value.length) {
+    resetVectorPreview()
+    return
+  }
+
+  vectorPreviewInfo.loading = true
+  vectorPreviewInfo.error = ''
+
+  try {
+    const { geojson } = await readVectorGeoJson()
+    if (requestId !== vectorPreviewRequestId) return
+    buildVectorPreview(geojson)
+  } catch (error) {
+    if (requestId !== vectorPreviewRequestId) return
+    vectorPreviewFields.value = []
+    vectorPreviewRows.value = []
+    vectorPreviewInfo.featureCount = 0
+    vectorPreviewInfo.geometryTypes = []
+    vectorPreviewInfo.error = error.message || '属性预览解析失败'
+  } finally {
+    if (requestId === vectorPreviewRequestId) {
+      vectorPreviewInfo.loading = false
+    }
+  }
+}
+
+function scheduleVectorPreviewRefresh() {
+  window.clearTimeout(vectorPreviewRefreshTimer)
+  vectorPreviewRefreshTimer = window.setTimeout(refreshVectorPreview, 120)
+}
+
 async function handleVectorFiles(event) {
   vectorFiles.value = Array.from(event.target.files || [])
   const primary = vectorFiles.value.find((file) => /\.(geojson|json|shp)$/i.test(file.name))
   vectorForm.name = primary ? getFileBaseName(primary.name) : ''
   vectorForm.sourceCrs = ''
   toolMessage.value = ''
+  resetVectorPreview()
 
   try {
     const geojsonFile = vectorFiles.value.find((file) => /\.(geojson|json)$/i.test(file.name))
@@ -3332,6 +3593,8 @@ async function handleVectorFiles(event) {
     }
   } catch (error) {
     vectorForm.sourceCrs = ''
+  } finally {
+    scheduleVectorPreviewRefresh()
   }
 }
 
@@ -3497,6 +3760,7 @@ async function importCadLayer() {
           ref="mapRef"
           @map-click="handleMapClick"
           @table-drop="handleTableDrop"
+          @file-drop="handleMapFileDrop"
           @feature-select="handleMapFeatureSelect"
           @edit-layer-change="handleEditLayerChange"
           @edit-feature-created="handleEditFeatureCreated"
@@ -3542,7 +3806,7 @@ async function importCadLayer() {
       <section
         class="tool-dialog"
         :class="{
-          wide: activeTool === 'mapshaper' || activeTool === 'csv-import',
+          wide: activeTool === 'mapshaper' || activeTool === 'csv-import' || activeTool === 'local-vector-import',
           collapsed: toolDialogCollapsed,
           dragging: toolDialogDragging,
           'map-picking': mapBboxPicking
@@ -3572,7 +3836,7 @@ async function importCadLayer() {
         </header>
 
         <template v-if="!toolDialogCollapsed">
-        <div v-if="activeTool === 'local-vector-import'" class="tool-dialog-body">
+        <div v-if="activeTool === 'local-vector-import'" class="tool-dialog-body vector-import-body">
           <label class="tool-drop-field">
             <input type="file" multiple accept=".geojson,.json,.shp,.dbf,.prj" @change="handleVectorFiles" />
             <strong>选择空间数据文件</strong>
@@ -3594,6 +3858,36 @@ async function importCadLayer() {
                 <option value="gbk">GBK</option>
               </select>
             </label>
+          </div>
+
+          <div class="vector-preview">
+            <div class="preview-head">
+              <strong>字段和属性预览</strong>
+              <small>{{ vectorPreviewStatusText }}</small>
+              <span :class="{ ok: vectorPreviewFields.length && !vectorPreviewInfo.error }">{{ vectorPreviewGeometryText }}</span>
+            </div>
+            <div v-if="vectorPreviewInfo.error" class="csv-preview-empty">{{ vectorPreviewInfo.error }}</div>
+            <div v-else-if="vectorPreviewRows.length && vectorPreviewFields.length" class="vector-preview-table">
+              <table>
+                <thead>
+                  <tr>
+                    <th class="row-number">#</th>
+                    <th v-for="field in vectorPreviewFields" :key="`vector-field-${field}`">{{ field }}</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr v-for="row in vectorPreviewRows" :key="`vector-preview-row-${row.__rowNumber}`">
+                    <td class="row-number">{{ row.__rowNumber }}</td>
+                    <td v-for="field in vectorPreviewFields" :key="`vector-value-${row.__rowNumber}-${field}`" :title="row[field]">
+                      {{ row[field] }}
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+            <div v-else class="csv-preview-empty">
+              {{ vectorFiles.length ? '已读取几何数据，但未解析到属性字段' : '选择文件后显示前 8 条属性样例' }}
+            </div>
           </div>
         </div>
 
@@ -3903,7 +4197,13 @@ async function importCadLayer() {
           <div class="tool-form-grid">
             <label>
               <span>输出图层名</span>
-              <input v-model.trim="coordConvertForm.outputName" type="text" placeholder="默认使用输入图层名和转换方向" />
+              <input
+                v-model.trim="coordConvertForm.outputName"
+                type="text"
+                :placeholder="coordConvertDefaultOutputName"
+                @input="coordConvertOutputNameManual = true"
+              />
+              <small>默认：{{ coordConvertDefaultOutputName }}</small>
             </label>
           </div>
           <div class="csv-config-section output-format-section">
@@ -5239,6 +5539,11 @@ async function importCadLayer() {
   align-items: start;
 }
 
+.tool-dialog-body.vector-import-body {
+  grid-template-columns: minmax(360px, 0.82fr) minmax(460px, 1.18fr);
+  align-items: start;
+}
+
 .analysis-source-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
@@ -5320,9 +5625,22 @@ async function importCadLayer() {
   grid-column: 1;
 }
 
+.vector-import-body .tool-drop-field,
+.vector-import-body .tool-form-grid {
+  grid-column: 1;
+}
+
 .csv-import-body .csv-preview {
   grid-column: 2;
   grid-row: 1 / span 4;
+  position: sticky;
+  top: 0;
+  align-self: start;
+}
+
+.vector-import-body .vector-preview {
+  grid-column: 2;
+  grid-row: 1 / span 3;
   position: sticky;
   top: 0;
   align-self: start;
@@ -5398,6 +5716,14 @@ async function importCadLayer() {
   border-color: #7eb4ec;
   box-shadow: 0 0 0 3px rgba(23, 119, 230, 0.12);
   outline: 0;
+}
+
+.tool-form-grid label > small {
+  color: #6b7b90;
+  font-size: 11px;
+  font-weight: 800;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
 }
 
 .crs-search-field {
@@ -5806,7 +6132,8 @@ async function importCadLayer() {
   line-height: 1.5;
 }
 
-.csv-preview {
+.csv-preview,
+.vector-preview {
   border: 1px solid #dce6f1;
   border-radius: 8px;
   background: #fff;
@@ -5851,13 +6178,15 @@ async function importCadLayer() {
   color: #16803c;
 }
 
-.csv-preview-table {
+.csv-preview-table,
+.vector-preview-table {
   max-height: 420px;
   overflow-x: auto;
   overflow-y: auto;
 }
 
-.csv-preview table {
+.csv-preview table,
+.vector-preview table {
   min-width: 100%;
   width: 100%;
   border-collapse: collapse;
@@ -5865,7 +6194,9 @@ async function importCadLayer() {
 }
 
 .csv-preview th,
-.csv-preview td {
+.csv-preview td,
+.vector-preview th,
+.vector-preview td {
   max-width: 150px;
   padding: 7px 8px;
   border-bottom: 1px solid #edf2f7;
@@ -5876,13 +6207,22 @@ async function importCadLayer() {
   white-space: nowrap;
 }
 
-.csv-preview th {
+.csv-preview th,
+.vector-preview th {
   position: sticky;
   top: 0;
   z-index: 1;
   color: #52657d;
   background: #f8fbff;
   font-weight: 900;
+}
+
+.vector-preview .row-number {
+  width: 42px;
+  max-width: 42px;
+  color: #7890aa;
+  background: #f8fbff;
+  text-align: center;
 }
 
 .csv-preview th.is-x-field,
@@ -6171,17 +6511,22 @@ async function importCadLayer() {
 }
 
 @media (max-width: 1040px) {
-  .tool-dialog-body.csv-import-body {
+  .tool-dialog-body.csv-import-body,
+  .tool-dialog-body.vector-import-body {
     grid-template-columns: 1fr;
   }
 
   .csv-import-body .tool-drop-field,
   .csv-import-body .csv-config-section,
-  .csv-import-body .csv-preview {
+  .csv-import-body .csv-preview,
+  .vector-import-body .tool-drop-field,
+  .vector-import-body .tool-form-grid,
+  .vector-import-body .vector-preview {
     grid-column: 1;
   }
 
-  .csv-import-body .csv-preview {
+  .csv-import-body .csv-preview,
+  .vector-import-body .vector-preview {
     grid-row: auto;
     position: static;
   }

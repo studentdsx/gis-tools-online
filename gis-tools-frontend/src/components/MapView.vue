@@ -5,8 +5,9 @@ import MapboxDraw from '@mapbox/mapbox-gl-draw'
 import '@mapbox/mapbox-gl-draw/dist/mapbox-gl-draw.css'
 import * as turf from '@turf/turf'
 import { useAppStore } from '../stores/app'
+import { runtimeConfig } from '../config/runtime'
 
-const emit = defineEmits(['mapClick', 'tableDrop', 'featureSelect', 'editLayerChange', 'editFeatureCreated'])
+const emit = defineEmits(['mapClick', 'tableDrop', 'fileDrop', 'featureSelect', 'editLayerChange', 'editFeatureCreated'])
 const mapContainer = ref(null)
 let map = null
 let marker = null
@@ -27,6 +28,7 @@ let mapLoaded = false
 const appStore = useAppStore()
 
 const showMeasurePanel = ref(false)
+const fileDragActive = ref(false)
 const activeTool = ref(null)
 const editingCursorActive = ref(false)
 const blankBackgroundLayerId = 'blank-background'
@@ -50,7 +52,7 @@ const styleOptions = ref([])
 let currentBasemapLayer = null
 
 onMounted(() => {
-  const token = import.meta.env.VITE_MAPBOX_ACCESS_TOKEN
+  const token = runtimeConfig.mapboxAccessToken
   mapboxgl.accessToken = token || ''
   
   map = new mapboxgl.Map({
@@ -1545,7 +1547,31 @@ function getLayerRenderDiagnostics() {
   })
 }
 
+function isExternalFileDrag(event) {
+  return Array.from(event.dataTransfer?.types || []).includes('Files')
+}
+
+function handleMapDragOver(event) {
+  if (!isExternalFileDrag(event)) return
+  event.dataTransfer.dropEffect = 'copy'
+  fileDragActive.value = true
+}
+
+function handleMapDragLeave(event) {
+  if (!isExternalFileDrag(event)) return
+  if (event.currentTarget?.contains?.(event.relatedTarget)) return
+  fileDragActive.value = false
+}
+
 function handleMapDrop(event) {
+  fileDragActive.value = false
+  const files = Array.from(event.dataTransfer?.files || [])
+
+  if (files.length) {
+    emit('fileDrop', files)
+    return
+  }
+
   const raw = event.dataTransfer.getData('application/json')
   if (!raw) return
 
@@ -1894,8 +1920,20 @@ defineExpose({
 </script>
 
 <template>
-  <div class="map-wrapper" :class="{ editing: editingCursorActive }" @click.self="closePanels" @dragover.prevent @drop.prevent="handleMapDrop">
+  <div
+    class="map-wrapper"
+    :class="{ editing: editingCursorActive, 'file-drag-active': fileDragActive }"
+    @click.self="closePanels"
+    @dragenter.prevent="handleMapDragOver"
+    @dragover.prevent="handleMapDragOver"
+    @dragleave.prevent="handleMapDragLeave"
+    @drop.prevent="handleMapDrop"
+  >
     <div ref="mapContainer" class="map-view"></div>
+    <div v-if="fileDragActive" class="map-file-drop-hint">
+      <strong>释放添加图层</strong>
+      <span>支持 GeoJSON / Shapefile（可同时拖入 .shp、.dbf、.prj）</span>
+    </div>
     
     <div class="bottom-tools">
       <div class="tools-group">
@@ -2005,6 +2043,45 @@ defineExpose({
 .map-view {
   width: 100%;
   height: 100%;
+}
+
+.map-wrapper.file-drag-active::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: 80;
+  border: 2px dashed rgba(24, 117, 230, 0.72);
+  background: rgba(230, 242, 255, 0.28);
+  pointer-events: none;
+}
+
+.map-file-drop-hint {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  z-index: 90;
+  display: grid;
+  gap: 6px;
+  min-width: min(360px, calc(100% - 48px));
+  padding: 16px 18px;
+  border: 1px solid rgba(24, 117, 230, 0.35);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.96);
+  box-shadow: 0 14px 36px rgba(15, 61, 108, 0.18);
+  color: #1f2a37;
+  text-align: center;
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+}
+
+.map-file-drop-hint strong {
+  color: #0f5fc6;
+  font-size: 16px;
+}
+
+.map-file-drop-hint span {
+  color: #5f6f82;
+  font-size: 12px;
 }
 
 .map-wrapper.editing :deep(.mapboxgl-canvas),

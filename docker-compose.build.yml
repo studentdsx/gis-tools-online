@@ -1,0 +1,12 @@
+name: gis-tools-online-build
+
+services:
+  backend:
+    image: ${BACKEND_IMAGE:-gis-tools-backend}:${GIS_TOOLS_IMAGE_TAG:-latest}
+    build:
+      context: ./gis-tools-backend
+
+  frontend:
+    image: ${FRONTEND_IMAGE:-gis-tools-frontend}:${GIS_TOOLS_IMAGE_TAG:-latest}
+    build:
+      context: ./gis-tools-frontend
